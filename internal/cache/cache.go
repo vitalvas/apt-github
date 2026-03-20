@@ -114,8 +114,8 @@ func (c *DiskCache) PutReleases(key string, data json.RawMessage) error {
 	return os.WriteFile(c.hashPath(releasesSubdir, key), raw, 0644)
 }
 
-func (c *DiskCache) GetPackage(url string) (string, bool) {
-	path := c.pathWithExt(packagesSubdir, url, ".deb")
+func (c *DiskCache) GetPackage(poolPath string) (string, bool) {
+	path := filepath.Join(c.baseDir, packagesSubdir, poolPath)
 
 	if _, err := os.Stat(path); err != nil {
 		return "", false
@@ -124,19 +124,47 @@ func (c *DiskCache) GetPackage(url string) (string, bool) {
 	return path, true
 }
 
-func (c *DiskCache) PutPackage(url string, data []byte) (string, error) {
-	dir := filepath.Join(c.baseDir, packagesSubdir)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+func (c *DiskCache) PutPackage(poolPath string, data []byte) (string, error) {
+	path := filepath.Join(c.baseDir, packagesSubdir, poolPath)
+
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return "", err
 	}
-
-	path := c.pathWithExt(packagesSubdir, url, ".deb")
 
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		return "", err
 	}
 
 	return path, nil
+}
+
+func (c *DiskCache) CleanStalePackages(repoPrefix string, validPaths map[string]bool) error {
+	repoDir := filepath.Join(c.baseDir, packagesSubdir, repoPrefix)
+
+	if _, err := os.Stat(repoDir); os.IsNotExist(err) {
+		return nil
+	}
+
+	return filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		rel, err := filepath.Rel(filepath.Join(c.baseDir, packagesSubdir), path)
+		if err != nil {
+			return nil
+		}
+
+		if !validPaths[rel] {
+			os.Remove(path)
+		}
+
+		return nil
+	})
 }
 
 func (c *DiskCache) Clean() error {

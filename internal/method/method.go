@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -26,6 +27,7 @@ type Method struct {
 	client    *github.Client
 	signer    signing.Signer
 	diskCache *cache.DiskCache
+	arch      string
 	cache     map[string]*repoState
 }
 
@@ -48,6 +50,7 @@ func NewWithOptions(signer signing.Signer, cacheDir string) *Method {
 		client:    github.NewClient(),
 		signer:    signer,
 		diskCache: cache.New(cacheDir),
+		arch:      systemArch(),
 		cache:     make(map[string]*repoState),
 	}
 }
@@ -83,6 +86,21 @@ func (m *Method) Run(in io.Reader, out io.Writer) error {
 }
 
 const defaultVersions = 3
+
+var goArchToDebian = map[string]string{
+	"amd64": "amd64",
+	"arm64": "arm64",
+	"386":   "i386",
+	"arm":   "armhf",
+}
+
+func systemArch() string {
+	if debArch, ok := goArchToDebian[runtime.GOARCH]; ok {
+		return debArch
+	}
+
+	return runtime.GOARCH
+}
 
 type parsedURI struct {
 	Owner    string
@@ -207,24 +225,36 @@ func (m *Method) loadRepo(parsed *parsedURI, out io.Writer) (*repoState, error) 
 			}
 		}
 
-		debInfos := release.CollectDebInfo(checksums)
+		allDebInfo := release.CollectDebInfo(checksums)
 
-		for i, info := range debInfos {
-			for _, f := range m.loadControlFields(info) {
-				debInfos[i].Control = append(debInfos[i].Control, github.ControlField{
+		for i, info := range allDebInfo {
+			uriPath := fmt.Sprintf("pool/%s/%s", release.TagName, info.Asset.Name)
+			assets[uriPath] = info.Asset.BrowserDownloadURL
+
+			if info.Arch != m.arch && info.Arch != "all" {
+				continue
+			}
+
+			poolPath := fmt.Sprintf("%s/%s/%s/%s", parsed.Owner, parsed.Repo, release.TagName, info.Asset.Name)
+
+			for _, f := range m.loadControlFields(info, poolPath) {
+				allDebInfo[i].Control = append(allDebInfo[i].Control, github.ControlField{
 					Key:   f.Key,
 					Value: f.Value,
 				})
 			}
 		}
 
-		for _, info := range debInfos {
-			poolPath := fmt.Sprintf("pool/%s/%s", release.TagName, info.Asset.Name)
-			assets[poolPath] = info.Asset.BrowserDownloadURL
-		}
-
-		allDebInfos = append(allDebInfos, debInfos...)
+		allDebInfos = append(allDebInfos, allDebInfo...)
 	}
+
+	validPaths := make(map[string]bool, len(allDebInfos))
+	for _, info := range allDebInfos {
+		poolPath := fmt.Sprintf("%s/%s/%s", key, info.Tag, info.Asset.Name)
+		validPaths[poolPath] = true
+	}
+
+	m.diskCache.CleanStalePackages(key, validPaths)
 
 	state := &repoState{
 		debInfos: allDebInfos,
@@ -259,7 +289,7 @@ func (m *Method) fetchReleases(owner, repo string, limit int) ([]github.Release,
 	return releases, nil
 }
 
-func (m *Method) loadControlFields(info github.DebInfo) []cache.Field {
+func (m *Method) loadControlFields(info github.DebInfo, poolPath string) []cache.Field {
 	if entry, ok := m.diskCache.GetControl(info.Asset.BrowserDownloadURL, info.Asset.Size); ok {
 		return entry.Fields
 	}
@@ -269,7 +299,7 @@ func (m *Method) loadControlFields(info github.DebInfo) []cache.Field {
 		return nil
 	}
 
-	m.diskCache.PutPackage(info.Asset.BrowserDownloadURL, debData)
+	m.diskCache.PutPackage(poolPath, debData)
 
 	ctrl, err := deb.ParseControl(debData)
 	if err != nil {
@@ -428,6 +458,8 @@ func (m *Method) handlePool(parsed *parsedURI, uri, filename string, out io.Writ
 		return sendFailure(out, uri, "asset not found")
 	}
 
+	cachePoolPath := fmt.Sprintf("%s/%s/%s", parsed.Owner, parsed.Repo, strings.TrimPrefix(parsed.Path, "pool/"))
+
 	status := &Message{Code: 200, Text: "URI Start"}
 	status.Set("URI", uri)
 
@@ -435,7 +467,7 @@ func (m *Method) handlePool(parsed *parsedURI, uri, filename string, out io.Writ
 		return err
 	}
 
-	if cachedPath, ok := m.diskCache.GetPackage(downloadURL); ok {
+	if cachedPath, ok := m.diskCache.GetPackage(cachePoolPath); ok {
 		if err := copyFile(cachedPath, filename); err == nil {
 			return m.respondPoolDone(uri, filename, out)
 		}

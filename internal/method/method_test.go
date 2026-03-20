@@ -332,10 +332,11 @@ func newTestServerUnverified(t *testing.T) *httptest.Server {
 func newTestMethod(t *testing.T, server *httptest.Server) *Method {
 	t.Helper()
 
-	cacheDir := filepath.Join(t.TempDir(), "control-cache")
+	cacheDir := filepath.Join(t.TempDir(), "cache")
 	m := NewWithOptions(&mockSigner{}, cacheDir)
 	m.client.BaseURL = server.URL
 	m.client.HTTPClient = server.Client()
+	m.arch = "amd64"
 
 	return m
 }
@@ -419,10 +420,11 @@ func TestMethodHandleInReleaseUnverified(t *testing.T) {
 
 func TestMethodHandleInReleaseNoSigner(t *testing.T) {
 	server := newTestServer(t)
-	cacheDir := filepath.Join(t.TempDir(), "control-cache")
+	cacheDir := filepath.Join(t.TempDir(), "cache")
 	m := NewWithOptions(nil, cacheDir)
 	m.client.BaseURL = server.URL
 	m.client.HTTPClient = server.Client()
+	m.arch = "amd64"
 
 	tmpDir := t.TempDir()
 	filename := filepath.Join(tmpDir, "InRelease")

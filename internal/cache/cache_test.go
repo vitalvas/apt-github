@@ -123,13 +123,13 @@ func TestPackageCache(t *testing.T) {
 		c := New(t.TempDir())
 
 		debData := []byte("fake deb content")
-		url := "https://example.com/test_1.0_amd64.deb"
+		poolPath := "owner/repo/v1.0.0/test_1.0.0_amd64.deb"
 
-		path, err := c.PutPackage(url, debData)
+		path, err := c.PutPackage(poolPath, debData)
 		require.NoError(t, err)
-		assert.Contains(t, path, ".deb")
+		assert.Contains(t, path, "owner/repo/v1.0.0/test_1.0.0_amd64.deb")
 
-		cachedPath, ok := c.GetPackage(url)
+		cachedPath, ok := c.GetPackage(poolPath)
 		require.True(t, ok)
 		assert.Equal(t, path, cachedPath)
 
@@ -138,12 +138,48 @@ func TestPackageCache(t *testing.T) {
 		assert.Equal(t, debData, got)
 	})
 
-	t.Run("miss on unknown url", func(t *testing.T) {
+	t.Run("miss on unknown path", func(t *testing.T) {
 		c := New(t.TempDir())
 
-		_, ok := c.GetPackage("https://example.com/missing.deb")
+		_, ok := c.GetPackage("owner/repo/v1.0.0/missing.deb")
 		assert.False(t, ok)
 	})
+}
+
+func TestCleanStalePackages(t *testing.T) {
+	c := New(t.TempDir())
+
+	_, err := c.PutPackage("owner/repo/v1.0.0/pkg_1.0.0_amd64.deb", []byte("v1"))
+	require.NoError(t, err)
+
+	_, err = c.PutPackage("owner/repo/v0.9.0/pkg_0.9.0_amd64.deb", []byte("v09"))
+	require.NoError(t, err)
+
+	_, err = c.PutPackage("owner/repo/v0.8.0/pkg_0.8.0_amd64.deb", []byte("v08"))
+	require.NoError(t, err)
+
+	validPaths := map[string]bool{
+		"owner/repo/v1.0.0/pkg_1.0.0_amd64.deb": true,
+		"owner/repo/v0.9.0/pkg_0.9.0_amd64.deb": true,
+	}
+
+	require.NoError(t, c.CleanStalePackages("owner/repo", validPaths))
+
+	_, ok := c.GetPackage("owner/repo/v1.0.0/pkg_1.0.0_amd64.deb")
+	assert.True(t, ok)
+
+	_, ok = c.GetPackage("owner/repo/v0.9.0/pkg_0.9.0_amd64.deb")
+	assert.True(t, ok)
+
+	_, ok = c.GetPackage("owner/repo/v0.8.0/pkg_0.8.0_amd64.deb")
+	assert.False(t, ok)
+}
+
+func TestCleanStalePackagesNoDir(t *testing.T) {
+	c := New(t.TempDir())
+
+	err := c.CleanStalePackages("owner/nonexistent", map[string]bool{})
+	assert.NoError(t, err)
 }
 
 func TestClean(t *testing.T) {
