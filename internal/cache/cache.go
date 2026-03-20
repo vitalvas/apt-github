@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -34,8 +35,12 @@ func New(baseDir string) *DiskCache {
 	return &DiskCache{baseDir: baseDir}
 }
 
-func (c *DiskCache) GetControl(owner, repo, tag string) (*Entry, bool) {
-	path := filepath.Join(c.baseDir, owner, repo, tag, "control.json")
+func controlFilename(debFilename string) string {
+	return strings.TrimSuffix(debFilename, ".deb") + ".json"
+}
+
+func (c *DiskCache) GetControl(owner, repo, tag, filename string) (*Entry, bool) {
+	path := filepath.Join(c.baseDir, owner, repo, tag, controlFilename(filename))
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -50,7 +55,7 @@ func (c *DiskCache) GetControl(owner, repo, tag string) (*Entry, bool) {
 	return &entry, true
 }
 
-func (c *DiskCache) PutControl(owner, repo, tag string, entry *Entry) error {
+func (c *DiskCache) PutControl(owner, repo, tag, filename string, entry *Entry) error {
 	dir := filepath.Join(c.baseDir, owner, repo, tag)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
@@ -61,7 +66,7 @@ func (c *DiskCache) PutControl(owner, repo, tag string, entry *Entry) error {
 		return err
 	}
 
-	return os.WriteFile(filepath.Join(dir, "control.json"), data, 0644)
+	return os.WriteFile(filepath.Join(dir, controlFilename(filename)), data, 0644)
 }
 
 func (c *DiskCache) GetReleases(owner, repo string) (json.RawMessage, bool) {

@@ -22,9 +22,9 @@ func TestControlCache(t *testing.T) {
 			},
 		}
 
-		require.NoError(t, c.PutControl("owner", "repo", "v1.0.0", entry))
+		require.NoError(t, c.PutControl("owner", "repo", "v1.0.0", "testpkg_1.0.0_amd64.deb", entry))
 
-		got, ok := c.GetControl("owner", "repo", "v1.0.0")
+		got, ok := c.GetControl("owner", "repo", "v1.0.0", "testpkg_1.0.0_amd64.deb")
 		require.True(t, ok)
 		assert.Equal(t, "testpkg", got.Fields[0].Value)
 		assert.Equal(t, "libc6", got.Fields[1].Value)
@@ -35,16 +35,34 @@ func TestControlCache(t *testing.T) {
 		c := New(base)
 
 		entry := &Entry{Fields: []Field{{Key: "Package", Value: "testpkg"}}}
-		require.NoError(t, c.PutControl("owner", "repo", "v1.0.0", entry))
+		require.NoError(t, c.PutControl("owner", "repo", "v1.0.0", "testpkg_1.0.0_amd64.deb", entry))
 
-		expected := filepath.Join(base, "owner", "repo", "v1.0.0", "control.json")
+		expected := filepath.Join(base, "owner", "repo", "v1.0.0", "testpkg_1.0.0_amd64.json")
 		assert.FileExists(t, expected)
 	})
 
-	t.Run("miss on unknown tag", func(t *testing.T) {
+	t.Run("multiple packages per tag", func(t *testing.T) {
 		c := New(t.TempDir())
 
-		_, ok := c.GetControl("owner", "repo", "v9.9.9")
+		minion := &Entry{Fields: []Field{{Key: "Package", Value: "salt-minion"}}}
+		master := &Entry{Fields: []Field{{Key: "Package", Value: "salt-master"}}}
+
+		require.NoError(t, c.PutControl("owner", "repo", "v1.0.0", "salt-minion_1.0.0_amd64.deb", minion))
+		require.NoError(t, c.PutControl("owner", "repo", "v1.0.0", "salt-master_1.0.0_amd64.deb", master))
+
+		gotMinion, ok := c.GetControl("owner", "repo", "v1.0.0", "salt-minion_1.0.0_amd64.deb")
+		require.True(t, ok)
+		assert.Equal(t, "salt-minion", gotMinion.Fields[0].Value)
+
+		gotMaster, ok := c.GetControl("owner", "repo", "v1.0.0", "salt-master_1.0.0_amd64.deb")
+		require.True(t, ok)
+		assert.Equal(t, "salt-master", gotMaster.Fields[0].Value)
+	})
+
+	t.Run("miss on unknown filename", func(t *testing.T) {
+		c := New(t.TempDir())
+
+		_, ok := c.GetControl("owner", "repo", "v9.9.9", "missing_1.0.0_amd64.deb")
 		assert.False(t, ok)
 	})
 
@@ -54,13 +72,30 @@ func TestControlCache(t *testing.T) {
 		entry1 := &Entry{Fields: []Field{{Key: "Version", Value: "1.0"}}}
 		entry2 := &Entry{Fields: []Field{{Key: "Version", Value: "2.0"}}}
 
-		require.NoError(t, c.PutControl("owner", "repo", "v1.0.0", entry1))
-		require.NoError(t, c.PutControl("owner", "repo", "v1.0.0", entry2))
+		require.NoError(t, c.PutControl("owner", "repo", "v1.0.0", "pkg_1.0.0_amd64.deb", entry1))
+		require.NoError(t, c.PutControl("owner", "repo", "v1.0.0", "pkg_1.0.0_amd64.deb", entry2))
 
-		got, ok := c.GetControl("owner", "repo", "v1.0.0")
+		got, ok := c.GetControl("owner", "repo", "v1.0.0", "pkg_1.0.0_amd64.deb")
 		require.True(t, ok)
 		assert.Equal(t, "2.0", got.Fields[0].Value)
 	})
+}
+
+func TestControlFilename(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{name: "standard deb", input: "testpkg_1.0.0_amd64.deb", expected: "testpkg_1.0.0_amd64.json"},
+		{name: "no deb extension", input: "testpkg_1.0.0_amd64", expected: "testpkg_1.0.0_amd64.json"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, controlFilename(tt.input))
+		})
+	}
 }
 
 func TestReleasesCache(t *testing.T) {
@@ -182,7 +217,7 @@ func TestCleanStaleTags(t *testing.T) {
 func TestClean(t *testing.T) {
 	c := New(t.TempDir())
 
-	require.NoError(t, c.PutControl("owner", "repo", "v1.0.0", &Entry{
+	require.NoError(t, c.PutControl("owner", "repo", "v1.0.0", "test_1.0.0_amd64.deb", &Entry{
 		Fields: []Field{{Key: "Package", Value: "test"}},
 	}))
 
@@ -190,7 +225,7 @@ func TestClean(t *testing.T) {
 
 	require.NoError(t, c.Clean())
 
-	_, ok := c.GetControl("owner", "repo", "v1.0.0")
+	_, ok := c.GetControl("owner", "repo", "v1.0.0", "test_1.0.0_amd64.deb")
 	assert.False(t, ok)
 
 	_, ok = c.GetReleases("owner", "repo")

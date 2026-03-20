@@ -285,7 +285,7 @@ func (m *Method) fetchReleases(owner, repo string, limit int) ([]github.Release,
 }
 
 func (m *Method) loadControlFields(info github.DebInfo, owner, repo, tag, filename string) []cache.Field {
-	if entry, ok := m.diskCache.GetControl(owner, repo, tag); ok {
+	if entry, ok := m.diskCache.GetControl(owner, repo, tag, filename); ok {
 		return entry.Fields
 	}
 
@@ -306,7 +306,7 @@ func (m *Method) loadControlFields(info github.DebInfo, owner, repo, tag, filena
 		fields = append(fields, cache.Field{Key: f.Key, Value: f.Value})
 	}
 
-	m.diskCache.PutControl(owner, repo, tag, &cache.Entry{Fields: fields})
+	m.diskCache.PutControl(owner, repo, tag, filename, &cache.Entry{Fields: fields})
 
 	return fields
 }
