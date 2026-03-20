@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/vitalvas/apt-transport-github/compare/v0.7.2...v0.8.0) (2026-03-20)
+
+
+### Features
+
+* rename project from apt-github to apt-transport-github ([77e4fb5](https://github.com/vitalvas/apt-transport-github/commit/77e4fb57b8bb485eb7214adbf932d52f4bbdd6a1))
+
 ## [0.7.2](https://github.com/vitalvas/apt-transport-github/compare/v0.7.1...v0.7.2) (2026-03-20)
 
 
