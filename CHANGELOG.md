@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/vitalvas/apt-github/compare/v0.7.0...v0.7.1) (2026-03-20)
+
+
+### Bug Fixes
+
+* key control cache per deb filename to support multiple packages per release ([c84a5fe](https://github.com/vitalvas/apt-github/commit/c84a5fe9922ff6acb409965b60e1091ce57691a7))
+
 ## [0.7.0](https://github.com/vitalvas/apt-github/compare/v0.6.0...v0.7.0) (2026-03-20)
 
 
