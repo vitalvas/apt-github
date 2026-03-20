@@ -387,7 +387,7 @@ func TestMethodHandleInRelease(t *testing.T) {
 
 	inReleaseStr := string(content)
 	assert.Contains(t, inReleaseStr, "-----BEGIN PGP SIGNED MESSAGE-----")
-	assert.Contains(t, inReleaseStr, "Origin: github")
+	assert.Contains(t, inReleaseStr, "Origin: github.com")
 	assert.Contains(t, inReleaseStr, "Label: owner/testpkg")
 	assert.Contains(t, inReleaseStr, "-----BEGIN PGP SIGNATURE-----")
 }
@@ -473,7 +473,7 @@ func TestMethodHandleRelease(t *testing.T) {
 	require.NoError(t, err)
 
 	releaseStr := string(content)
-	assert.Contains(t, releaseStr, "Origin: github")
+	assert.Contains(t, releaseStr, "Origin: github.com")
 	assert.Contains(t, releaseStr, "Label: owner/testpkg")
 	assert.Contains(t, releaseStr, "Suite: stable")
 	assert.Contains(t, releaseStr, "amd64")

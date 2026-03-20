@@ -98,6 +98,34 @@ deb [signed-by=/etc/apt/keyrings/apt-github.gpg] github://OWNER/REPO?versions=20
 > [!WARNING]
 > Each version requires downloading the `.deb` file to extract package metadata during `apt update` (results are cached on disk for subsequent runs). Higher version counts increase the initial `apt update` time and GitHub API usage. The unauthenticated GitHub API rate limit is 60 requests per hour.
 
+### Priority Pinning
+
+APT priority pinning lets you control how packages from GitHub repos are preferred relative to other sources. The transport generates `Origin: github.com` and `Label: {owner}/{repo}` in the Release file.
+
+Pin a specific repo higher than default:
+
+```
+# /etc/apt/preferences.d/apt-github.pref
+Package: *
+Pin: release o=github.com,l=vitalvas/apt-github
+Pin-Priority: 990
+```
+
+Pin all GitHub repos lower than official:
+
+```
+# /etc/apt/preferences.d/apt-github.pref
+Package: *
+Pin: release o=github.com
+Pin-Priority: 400
+```
+
+Verify with:
+
+```bash
+apt-cache policy <package-name>
+```
+
 ### Cache
 
 Release metadata and package control data are cached locally at `/var/cache/apt-github/` in a tree organized by `{owner}/{repo}/{tag}/`. The release metadata cache has a 5-minute TTL; control metadata and downloaded `.deb` files are cached indefinitely. Stale tag directories are automatically removed when releases are refreshed.

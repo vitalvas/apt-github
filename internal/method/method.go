@@ -382,7 +382,7 @@ func (m *Method) generateReleaseContent(parsed *parsedURI, state *repoState) []b
 
 	var buf bytes.Buffer
 
-	fmt.Fprintf(&buf, "Origin: github\n")
+	fmt.Fprintf(&buf, "Origin: github.com\n")
 	fmt.Fprintf(&buf, "Label: %s/%s\n", parsed.Owner, parsed.Repo)
 	fmt.Fprintf(&buf, "Suite: stable\n")
 	fmt.Fprintf(&buf, "Codename: stable\n")
