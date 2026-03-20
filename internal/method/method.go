@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vitalvas/apt-github/internal/deb"
 	"github.com/vitalvas/apt-github/internal/github"
 	"github.com/vitalvas/apt-github/internal/signing"
 )
@@ -168,6 +169,25 @@ func (m *Method) loadRepo(parsed *parsedURI, out io.Writer) (*repoState, error) 
 	}
 
 	debInfos := release.CollectDebInfo(checksums)
+
+	for i, info := range debInfos {
+		debData, err := m.client.FetchBytes(info.Asset.BrowserDownloadURL)
+		if err != nil {
+			continue
+		}
+
+		ctrl, err := deb.ParseControl(debData)
+		if err != nil {
+			continue
+		}
+
+		for _, f := range ctrl.Fields {
+			debInfos[i].Control = append(debInfos[i].Control, github.ControlField{
+				Key:   f.Key,
+				Value: f.Value,
+			})
+		}
+	}
 
 	assets := make(map[string]string)
 	for _, info := range debInfos {
@@ -350,6 +370,27 @@ func (m *Method) handlePool(parsed *parsedURI, uri, filename string, out io.Writ
 	return done.Write(out)
 }
 
+var controlPassthrough = map[string]bool{
+	"Package":        true,
+	"Version":        true,
+	"Architecture":   true,
+	"Maintainer":     true,
+	"Description":    true,
+	"Depends":        true,
+	"Pre-Depends":    true,
+	"Recommends":     true,
+	"Suggests":       true,
+	"Conflicts":      true,
+	"Breaks":         true,
+	"Replaces":       true,
+	"Provides":       true,
+	"Enhances":       true,
+	"Section":        true,
+	"Priority":       true,
+	"Installed-Size": true,
+	"Homepage":       true,
+}
+
 func (m *Method) generatePackagesContent(state *repoState, arch string) []byte {
 	var buf bytes.Buffer
 	first := true
@@ -367,11 +408,18 @@ func (m *Method) generatePackagesContent(state *repoState, arch string) []byte {
 
 		poolPath := fmt.Sprintf("pool/%s/%s", state.release.TagName, info.Asset.Name)
 
-		fmt.Fprintf(&buf, "Package: %s\n", info.Name)
-		fmt.Fprintf(&buf, "Version: %s\n", info.Version)
-		fmt.Fprintf(&buf, "Architecture: %s\n", info.Arch)
-		fmt.Fprintf(&buf, "Maintainer: GitHub Release\n")
-		fmt.Fprintf(&buf, "Description: %s installed from GitHub\n", info.Name)
+		if len(info.Control) > 0 {
+			for _, f := range info.Control {
+				if controlPassthrough[f.Key] {
+					fmt.Fprintf(&buf, "%s: %s\n", f.Key, f.Value)
+				}
+			}
+		} else {
+			fmt.Fprintf(&buf, "Package: %s\n", info.Name)
+			fmt.Fprintf(&buf, "Version: %s\n", info.Version)
+			fmt.Fprintf(&buf, "Architecture: %s\n", info.Arch)
+		}
+
 		fmt.Fprintf(&buf, "Filename: %s\n", poolPath)
 		fmt.Fprintf(&buf, "Size: %d\n", info.Asset.Size)
 

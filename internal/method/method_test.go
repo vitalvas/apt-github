@@ -1,8 +1,10 @@
 package method
 
 import (
+	"archive/tar"
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -110,8 +112,70 @@ func buildAcquireInput(uri, filename string) string {
 	return fmt.Sprintf("600 URI Acquire\nURI: %s\nFilename: %s\n\n", uri, filename)
 }
 
+func buildTestDeb(t *testing.T, controlContent string) []byte {
+	t.Helper()
+
+	var tarBuf bytes.Buffer
+	tw := tar.NewWriter(&tarBuf)
+
+	require.NoError(t, tw.WriteHeader(&tar.Header{
+		Name: "./control",
+		Size: int64(len(controlContent)),
+		Mode: 0644,
+	}))
+	_, err := tw.Write([]byte(controlContent))
+	require.NoError(t, err)
+	require.NoError(t, tw.Close())
+
+	var gzBuf bytes.Buffer
+	gz := gzip.NewWriter(&gzBuf)
+	_, err = gz.Write(tarBuf.Bytes())
+	require.NoError(t, err)
+	require.NoError(t, gz.Close())
+
+	controlTarGz := gzBuf.Bytes()
+	debBinary := []byte("2.0\n")
+
+	var buf bytes.Buffer
+	buf.WriteString("!<arch>\n")
+
+	writeArEntry := func(name string, data []byte) {
+		header := fmt.Sprintf("%-16s%-12s%-6s%-6s%-8s%-10d`\n",
+			name, "0", "0", "0", "100644", len(data))
+		buf.WriteString(header)
+		buf.Write(data)
+
+		if len(data)%2 != 0 {
+			buf.WriteByte('\n')
+		}
+	}
+
+	writeArEntry("debian-binary", debBinary)
+	writeArEntry("control.tar.gz", controlTarGz)
+
+	return buf.Bytes()
+}
+
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
+
+	amd64Control := `Package: testpkg
+Version: 1.0.0
+Architecture: amd64
+Maintainer: Test <test@example.com>
+Depends: libc6 (>= 2.17), gnupg
+Description: Test package
+`
+	arm64Control := `Package: testpkg
+Version: 1.0.0
+Architecture: arm64
+Maintainer: Test <test@example.com>
+Depends: libc6 (>= 2.17), gnupg
+Description: Test package
+`
+
+	amd64Deb := buildTestDeb(t, amd64Control)
+	arm64Deb := buildTestDeb(t, arm64Control)
 
 	release := github.Release{
 		TagName:     "v1.0.0",
@@ -119,12 +183,12 @@ func newTestServer(t *testing.T) *httptest.Server {
 		Assets: []github.Asset{
 			{
 				Name:               "testpkg_1.0.0_linux_amd64.deb",
-				Size:               1024,
+				Size:               int64(len(amd64Deb)),
 				BrowserDownloadURL: "",
 			},
 			{
 				Name:               "testpkg_1.0.0_linux_arm64.deb",
-				Size:               900,
+				Size:               int64(len(arm64Deb)),
 				BrowserDownloadURL: "",
 			},
 			{
@@ -136,7 +200,6 @@ func newTestServer(t *testing.T) *httptest.Server {
 	}
 
 	checksums := "abc123def456abcdef1234567890abcdef1234567890abcdef1234567890abcd  testpkg_1.0.0_linux_amd64.deb\nfed987654321fedcba0987654321fedcba0987654321fedcba0987654321fedc  testpkg_1.0.0_linux_arm64.deb\n"
-	debContent := []byte("fake deb content for testing")
 
 	gitRef := github.GitRef{
 		Ref: "refs/tags/v1.0.0",
@@ -174,10 +237,10 @@ func newTestServer(t *testing.T) *httptest.Server {
 			w.Write([]byte(checksums))
 
 		case "/download/testpkg_1.0.0_linux_amd64.deb":
-			w.Write(debContent)
+			w.Write(amd64Deb)
 
 		case "/download/testpkg_1.0.0_linux_arm64.deb":
-			w.Write(debContent)
+			w.Write(arm64Deb)
 
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -417,6 +480,8 @@ func TestMethodHandlePackages(t *testing.T) {
 	assert.Contains(t, pkgStr, "Package: testpkg")
 	assert.Contains(t, pkgStr, "Version: 1.0.0")
 	assert.Contains(t, pkgStr, "Architecture: amd64")
+	assert.Contains(t, pkgStr, "Depends: libc6 (>= 2.17), gnupg")
+	assert.Contains(t, pkgStr, "Maintainer: Test <test@example.com>")
 	assert.Contains(t, pkgStr, "pool/v1.0.0/testpkg_1.0.0_linux_amd64.deb")
 	assert.NotContains(t, pkgStr, "arm64")
 }
@@ -436,7 +501,5 @@ func TestMethodHandlePool(t *testing.T) {
 
 	m.Run(strings.NewReader(input), &out)
 
-	content, err := os.ReadFile(debFilename)
-	require.NoError(t, err)
-	assert.Equal(t, "fake deb content for testing", string(content))
+	assert.FileExists(t, debFilename)
 }

@@ -69,9 +69,22 @@ sudo apt update
 sudo apt install systemd-supervisord
 ```
 
+### DEB822 Format
+
+You can also use the modern DEB822 format (`.sources` files):
+
+```bash
+cat <<EOF | sudo tee /etc/apt/sources.list.d/systemd-supervisord.sources
+Types: deb
+URIs: github://vitalvas/systemd-supervisord
+Suites: stable
+Components: main
+Signed-By: /etc/apt/keyrings/apt-github.gpg
+EOF
+```
+
 ## Requirements
 
-- Go 1.22+ (build)
 - `gpg` (runtime, for signing)
 - GitHub releases with `.deb` assets (goreleaser naming convention)
 - goreleaser's `checksums.txt` in the release assets

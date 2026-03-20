@@ -198,6 +198,24 @@ func TestClientFetchContent(t *testing.T) {
 	assert.Equal(t, "sha256hash  file.deb\n", content)
 }
 
+func TestClientFetchBytes(t *testing.T) {
+	expectedContent := []byte("binary content here")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write(expectedContent)
+	}))
+	defer server.Close()
+
+	client := &Client{
+		HTTPClient: server.Client(),
+		BaseURL:    server.URL,
+	}
+
+	got, err := client.FetchBytes(fmt.Sprintf("%s/file.deb", server.URL))
+	require.NoError(t, err)
+	assert.Equal(t, expectedContent, got)
+}
+
 func TestClientDownloadFile(t *testing.T) {
 	expectedContent := []byte("fake deb content")
 

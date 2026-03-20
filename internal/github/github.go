@@ -52,6 +52,12 @@ type DebInfo struct {
 	Arch    string
 	Asset   Asset
 	SHA256  string
+	Control []ControlField
+}
+
+type ControlField struct {
+	Key   string
+	Value string
 }
 
 func (c *Client) GetLatestRelease(owner, repo string) (*Release, error) {
@@ -92,6 +98,20 @@ func (c *Client) FetchContent(url string) (string, error) {
 	}
 
 	return string(body), nil
+}
+
+func (c *Client) FetchBytes(url string) ([]byte, error) {
+	resp, err := c.doGet(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetch returned %d", resp.StatusCode)
+	}
+
+	return io.ReadAll(resp.Body)
 }
 
 func (c *Client) DownloadFile(url, destPath string) (int64, error) {
