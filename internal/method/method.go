@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/url"
 	"os"
 	"runtime"
@@ -29,6 +30,7 @@ type Method struct {
 	diskCache *cache.DiskCache
 	arch      string
 	cache     map[string]*repoState
+	logger    *log.Logger
 }
 
 type repoState struct {
@@ -52,6 +54,7 @@ func NewWithOptions(signer signing.Signer, cacheDir string) *Method {
 		diskCache: cache.New(cacheDir),
 		arch:      systemArch(),
 		cache:     make(map[string]*repoState),
+		logger:    log.New(os.Stderr, "apt-transport-github: ", 0),
 	}
 }
 
@@ -220,7 +223,9 @@ func (m *Method) loadRepo(parsed *parsedURI, out io.Writer) (*repoState, error) 
 
 		if csAsset := release.FindChecksumsAsset(); csAsset != nil {
 			content, err := m.client.FetchContent(csAsset.BrowserDownloadURL)
-			if err == nil {
+			if err != nil {
+				m.logger.Printf("warning: failed to fetch checksums for %s: %s", release.TagName, err)
+			} else {
 				checksums = github.ParseChecksums(content)
 			}
 		}
@@ -235,11 +240,17 @@ func (m *Method) loadRepo(parsed *parsedURI, out io.Writer) (*repoState, error) 
 				continue
 			}
 
-			for _, f := range m.loadControlFields(info, parsed.Owner, parsed.Repo, release.TagName, info.Asset.Name) {
+			fields, computedSHA256 := m.loadControlFields(info, parsed.Owner, parsed.Repo, release.TagName, info.Asset.Name)
+
+			for _, f := range fields {
 				allDebInfo[i].Control = append(allDebInfo[i].Control, github.ControlField{
 					Key:   f.Key,
 					Value: f.Value,
 				})
+			}
+
+			if allDebInfo[i].SHA256 == "" && computedSHA256 != "" {
+				allDebInfo[i].SHA256 = computedSHA256
 			}
 		}
 
@@ -284,31 +295,39 @@ func (m *Method) fetchReleases(owner, repo string, limit int) ([]github.Release,
 	return releases, nil
 }
 
-func (m *Method) loadControlFields(info github.DebInfo, owner, repo, tag, filename string) []cache.Field {
+func (m *Method) loadControlFields(info github.DebInfo, owner, repo, tag, filename string) ([]cache.Field, string) {
 	if entry, ok := m.diskCache.GetControl(owner, repo, tag, filename); ok {
-		return entry.Fields
+		return entry.Fields, entry.SHA256
 	}
 
 	debData, err := m.client.FetchBytes(info.Asset.BrowserDownloadURL)
 	if err != nil {
-		return nil
+		m.logger.Printf("warning: failed to fetch package %s/%s %s: %s", owner, repo, filename, err)
+		return nil, ""
 	}
 
 	m.diskCache.PutPackage(owner, repo, tag, filename, debData)
 
 	ctrl, err := deb.ParseControl(debData)
 	if err != nil {
-		return nil
+		m.logger.Printf("warning: failed to parse control for %s/%s %s: %s", owner, repo, filename, err)
+		return nil, ""
 	}
+
+	hash := sha256.Sum256(debData)
+	sha256Hex := fmt.Sprintf("%x", hash)
 
 	fields := make([]cache.Field, 0, len(ctrl.Fields))
 	for _, f := range ctrl.Fields {
 		fields = append(fields, cache.Field{Key: f.Key, Value: f.Value})
 	}
 
-	m.diskCache.PutControl(owner, repo, tag, filename, &cache.Entry{Fields: fields})
+	m.diskCache.PutControl(owner, repo, tag, filename, &cache.Entry{
+		Fields: fields,
+		SHA256: sha256Hex,
+	})
 
-	return fields
+	return fields, sha256Hex
 }
 
 func (m *Method) handleInRelease(parsed *parsedURI, uri, filename string, out io.Writer) error {

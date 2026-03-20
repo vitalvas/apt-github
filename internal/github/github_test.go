@@ -13,6 +13,45 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestAPIErrorMessage(t *testing.T) {
+	tests := []struct {
+		name     string
+		status   int
+		body     string
+		expected string
+	}{
+		{
+			name:     "json with message",
+			status:   http.StatusForbidden,
+			body:     `{"message":"API rate limit exceeded for 1.2.3.4"}`,
+			expected: "HTTP 403: API rate limit exceeded for 1.2.3.4",
+		},
+		{
+			name:     "plain text body",
+			status:   http.StatusBadGateway,
+			body:     "Bad Gateway",
+			expected: "HTTP 502: Bad Gateway",
+		},
+		{
+			name:     "empty body",
+			status:   http.StatusNotFound,
+			body:     "",
+			expected: "HTTP 404",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			recorder.WriteHeader(tt.status)
+			recorder.Body.WriteString(tt.body)
+
+			result := apiErrorMessage(recorder.Result())
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestParseDebFilename(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -178,19 +217,42 @@ func TestClientGetReleases(t *testing.T) {
 }
 
 func TestClientGetReleasesError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer server.Close()
+	t.Run("with api message", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]string{
+				"message": "API rate limit exceeded for 1.2.3.4",
+			})
+		}))
+		defer server.Close()
 
-	client := &Client{
-		HTTPClient: server.Client(),
-		BaseURL:    server.URL,
-	}
+		client := &Client{
+			HTTPClient: server.Client(),
+			BaseURL:    server.URL,
+		}
 
-	_, err := client.GetReleases("owner", "repo", 30)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "404")
+		_, err := client.GetReleases("owner", "repo", 30)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "403")
+		assert.Contains(t, err.Error(), "API rate limit exceeded")
+	})
+
+	t.Run("without body", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer server.Close()
+
+		client := &Client{
+			HTTPClient: server.Client(),
+			BaseURL:    server.URL,
+		}
+
+		_, err := client.GetReleases("owner", "repo", 30)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "404")
+	})
 }
 
 func TestClientFetchContent(t *testing.T) {

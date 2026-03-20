@@ -49,6 +49,32 @@ func loadToken() string {
 	return strings.TrimSpace(string(data))
 }
 
+func apiErrorMessage(resp *http.Response) string {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Sprintf("HTTP %d", resp.StatusCode)
+	}
+
+	var apiErr struct {
+		Message string `json:"message"`
+	}
+
+	if err := json.Unmarshal(body, &apiErr); err == nil && apiErr.Message != "" {
+		return fmt.Sprintf("HTTP %d: %s", resp.StatusCode, apiErr.Message)
+	}
+
+	if len(body) > 0 {
+		text := strings.TrimSpace(string(body))
+		if len(text) > 200 {
+			text = text[:200]
+		}
+
+		return fmt.Sprintf("HTTP %d: %s", resp.StatusCode, text)
+	}
+
+	return fmt.Sprintf("HTTP %d", resp.StatusCode)
+}
+
 func (c *Client) doGet(url string) (*http.Response, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -101,7 +127,7 @@ func (c *Client) GetReleases(owner, repo string, limit int) ([]Release, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API returned %d", resp.StatusCode)
+		return nil, fmt.Errorf("GitHub API returned %s", apiErrorMessage(resp))
 	}
 
 	var releases []Release
@@ -120,7 +146,7 @@ func (c *Client) FetchContent(url string) (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("fetch returned %d", resp.StatusCode)
+		return "", fmt.Errorf("fetch returned %s", apiErrorMessage(resp))
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -139,7 +165,7 @@ func (c *Client) FetchBytes(url string) ([]byte, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fetch returned %d", resp.StatusCode)
+		return nil, fmt.Errorf("fetch returned %s", apiErrorMessage(resp))
 	}
 
 	return io.ReadAll(resp.Body)
@@ -153,7 +179,7 @@ func (c *Client) DownloadFile(url, destPath string) (int64, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("download returned %d", resp.StatusCode)
+		return 0, fmt.Errorf("download returned %s", apiErrorMessage(resp))
 	}
 
 	f, err := os.Create(destPath)
@@ -250,7 +276,7 @@ func (c *Client) VerifyTagSignature(owner, repo, tagName string) (bool, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("tag ref API returned %d", resp.StatusCode)
+		return false, fmt.Errorf("tag ref API returned %s", apiErrorMessage(resp))
 	}
 
 	var ref GitRef
@@ -278,7 +304,7 @@ func (c *Client) verifyAnnotatedTag(owner, repo, sha string) (bool, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("tag object API returned %d", resp.StatusCode)
+		return false, fmt.Errorf("tag object API returned %s", apiErrorMessage(resp))
 	}
 
 	var tag GitTag
@@ -299,7 +325,7 @@ func (c *Client) verifyCommit(owner, repo, sha string) (bool, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("commit object API returned %d", resp.StatusCode)
+		return false, fmt.Errorf("commit object API returned %s", apiErrorMessage(resp))
 	}
 
 	var commit GitCommit

@@ -33,6 +33,10 @@ nfpms:
       - deb
     dependencies:
       - gnupg
+    contents:
+      - src: misc/apt-transport-github.sources
+        dst: /etc/apt/sources.list.d/apt-transport-github.sources
+        type: config
     scripts:
       postinstall: misc/postinstall.sh
 checksum:

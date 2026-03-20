@@ -1,0 +1,5 @@
+Types: deb
+URIs: github://vitalvas/apt-transport-github
+Suites: stable
+Components: main
+Signed-By: /etc/apt/keyrings/apt-transport-github.gpg

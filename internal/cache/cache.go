@@ -16,6 +16,7 @@ const (
 
 type Entry struct {
 	Fields []Field `json:"fields"`
+	SHA256 string  `json:"sha256,omitempty"`
 }
 
 type ReleasesEntry struct {
