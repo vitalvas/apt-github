@@ -12,7 +12,7 @@ import (
 func TestRootCmdRunsMethod(t *testing.T) {
 	var stdout bytes.Buffer
 
-	cmd := NewRootCmdWithIO(strings.NewReader(""), &stdout)
+	cmd := NewRootCmdWithIO("test", strings.NewReader(""), &stdout)
 	cmd.SetArgs([]string{})
 
 	err := cmd.Execute()
@@ -22,14 +22,15 @@ func TestRootCmdRunsMethod(t *testing.T) {
 }
 
 func TestNewRootCmd(t *testing.T) {
-	cmd := NewRootCmd()
+	cmd := NewRootCmd("1.2.3")
 
 	assert.Equal(t, "apt-github", cmd.Use)
+	assert.Equal(t, "1.2.3", cmd.Version)
 	assert.NotNil(t, cmd.RunE)
 }
 
 func TestSetupSubcommand(t *testing.T) {
-	cmd := NewRootCmd()
+	cmd := NewRootCmd("test")
 	cmd.SetArgs([]string{"setup"})
 
 	err := cmd.Execute()
@@ -38,7 +39,7 @@ func TestSetupSubcommand(t *testing.T) {
 }
 
 func TestUnknownSubcommand(t *testing.T) {
-	cmd := NewRootCmd()
+	cmd := NewRootCmd("test")
 	cmd.SetArgs([]string{"unknown"})
 
 	err := cmd.Execute()
@@ -46,7 +47,7 @@ func TestUnknownSubcommand(t *testing.T) {
 }
 
 func TestSetupCmdExists(t *testing.T) {
-	cmd := NewRootCmd()
+	cmd := NewRootCmd("test")
 
 	setupCmd, _, err := cmd.Find([]string{"setup"})
 	require.NoError(t, err)
@@ -54,7 +55,7 @@ func TestSetupCmdExists(t *testing.T) {
 }
 
 func TestCleanSubcommand(t *testing.T) {
-	cmd := NewRootCmd()
+	cmd := NewRootCmd("test")
 	cmd.SetArgs([]string{"clean"})
 
 	err := cmd.Execute()
@@ -62,7 +63,7 @@ func TestCleanSubcommand(t *testing.T) {
 }
 
 func TestCleanCmdExists(t *testing.T) {
-	cmd := NewRootCmd()
+	cmd := NewRootCmd("test")
 
 	cleanCmd, _, err := cmd.Find([]string{"clean"})
 	require.NoError(t, err)

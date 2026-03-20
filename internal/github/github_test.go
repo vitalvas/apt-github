@@ -346,6 +346,75 @@ func TestUserAgentHeader(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestAuthTokenHeader(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer ghp_testtoken123", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]Release{{TagName: "v1.0.0"}})
+	}))
+	defer server.Close()
+
+	client := &Client{
+		HTTPClient: server.Client(),
+		BaseURL:    server.URL,
+		Token:      "ghp_testtoken123",
+	}
+
+	_, err := client.GetReleases("owner", "repo", 30)
+	require.NoError(t, err)
+}
+
+func TestNoAuthHeaderWithoutToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Empty(t, r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]Release{{TagName: "v1.0.0"}})
+	}))
+	defer server.Close()
+
+	client := &Client{
+		HTTPClient: server.Client(),
+		BaseURL:    server.URL,
+	}
+
+	_, err := client.GetReleases("owner", "repo", 30)
+	require.NoError(t, err)
+}
+
+func TestLoadTokenFromEnv(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "ghp_envtoken")
+
+	token := loadToken()
+	assert.Equal(t, "ghp_envtoken", token)
+}
+
+func TestLoadTokenFromFile(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "")
+
+	tmpFile := filepath.Join(t.TempDir(), "token")
+	require.NoError(t, os.WriteFile(tmpFile, []byte("ghp_filetoken\n"), 0600))
+
+	origTokenFile := tokenFile
+	tokenFile = tmpFile
+
+	t.Cleanup(func() { tokenFile = origTokenFile })
+
+	token := loadToken()
+	assert.Equal(t, "ghp_filetoken", token)
+}
+
+func TestLoadTokenMissing(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "")
+
+	origTokenFile := tokenFile
+	tokenFile = "/nonexistent/path/token"
+
+	t.Cleanup(func() { tokenFile = origTokenFile })
+
+	token := loadToken()
+	assert.Empty(t, token)
+}
+
 func TestVerifyTagSignatureRefNotFound(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)

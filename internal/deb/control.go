@@ -139,7 +139,7 @@ func parseControlFields(data []byte) (*Control, error) {
 	var currentValue strings.Builder
 
 	flush := func() {
-		if currentKey != "" {
+		if currentKey != "" && currentValue.Len() > 0 {
 			ctrl.Fields = append(ctrl.Fields, Field{
 				Key:   currentKey,
 				Value: currentValue.String(),

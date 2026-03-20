@@ -9,18 +9,44 @@ import (
 	"strings"
 )
 
-const userAgent = "Mozilla/5.0 (compatible; apt-github/1.0; +https://github.com/vitalvas/apt-github)"
+var (
+	tokenFile  = "/etc/apt-github/token"
+	appVersion = "dev"
+)
+
+func SetVersion(v string) {
+	appVersion = v
+}
+
+func userAgent() string {
+	return fmt.Sprintf("Mozilla/5.0 (compatible; apt-github/%s; +https://github.com/vitalvas/apt-github)", appVersion)
+}
 
 type Client struct {
 	HTTPClient *http.Client
 	BaseURL    string
+	Token      string
 }
 
 func NewClient() *Client {
 	return &Client{
 		HTTPClient: http.DefaultClient,
 		BaseURL:    "https://api.github.com",
+		Token:      loadToken(),
 	}
+}
+
+func loadToken() string {
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		return token
+	}
+
+	data, err := os.ReadFile(tokenFile)
+	if err != nil {
+		return ""
+	}
+
+	return strings.TrimSpace(string(data))
 }
 
 func (c *Client) doGet(url string) (*http.Response, error) {
@@ -29,7 +55,11 @@ func (c *Client) doGet(url string) (*http.Response, error) {
 		return nil, err
 	}
 
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", userAgent())
+
+	if c.Token != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.Token))
+	}
 
 	return c.HTTPClient.Do(req)
 }

@@ -7,19 +7,23 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/vitalvas/apt-github/internal/cache"
+	"github.com/vitalvas/apt-github/internal/github"
 	"github.com/vitalvas/apt-github/internal/method"
 	"github.com/vitalvas/apt-github/internal/setup"
 	"github.com/vitalvas/apt-github/internal/signing"
 )
 
-func NewRootCmd() *cobra.Command {
-	return NewRootCmdWithIO(os.Stdin, os.Stdout)
+func NewRootCmd(version string) *cobra.Command {
+	return NewRootCmdWithIO(version, os.Stdin, os.Stdout)
 }
 
-func NewRootCmdWithIO(stdin io.Reader, stdout io.Writer) *cobra.Command {
+func NewRootCmdWithIO(version string, stdin io.Reader, stdout io.Writer) *cobra.Command {
+	github.SetVersion(version)
+
 	rootCmd := &cobra.Command{
 		Use:          "apt-github",
 		Short:        "APT transport method for GitHub releases",
+		Version:      version,
 		SilenceUsage: true,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			signer := signing.NewGPGSigner(signing.DefaultGPGHome)

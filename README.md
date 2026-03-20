@@ -114,6 +114,22 @@ To clear the cache:
 sudo apt-github clean
 ```
 
+### Authentication
+
+To avoid GitHub API rate limits (60 requests/hour unauthenticated), provide a Personal Access Token (PAT). The token is read from the following sources in order:
+
+1. Environment variable `GITHUB_TOKEN`
+2. File `/etc/apt-github/token`
+
+To set up a token:
+
+```bash
+echo "ghp_yourtoken" | sudo tee /etc/apt-github/token
+sudo chmod 600 /etc/apt-github/token
+```
+
+A token with no scopes (public repo access only) is sufficient.
+
 ## Requirements
 
 - `gpg` (runtime, for signing)

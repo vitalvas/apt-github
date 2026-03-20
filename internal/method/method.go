@@ -493,7 +493,7 @@ func (m *Method) generatePackagesContent(state *repoState, arch string) []byte {
 
 		if len(info.Control) > 0 {
 			for _, f := range info.Control {
-				if controlPassthrough[f.Key] {
+				if controlPassthrough[f.Key] && f.Value != "" {
 					fmt.Fprintf(&buf, "%s: %s\n", f.Key, f.Value)
 				}
 			}
