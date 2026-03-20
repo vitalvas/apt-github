@@ -33,13 +33,7 @@ APT verifies signature via signed-by keyring
 
 ## Installation
 
-Download and install the latest `.deb` package from [GitHub Releases](https://github.com/vitalvas/apt-github/releases):
-
-```bash
-curl -fsSL -o /tmp/apt-github.deb \
-  "https://github.com/vitalvas/apt-github/releases/latest/download/apt-github_$(dpkg --print-architecture).deb"
-sudo dpkg -i /tmp/apt-github.deb
-```
+Download and install the latest `.deb` package from [GitHub Releases](https://github.com/vitalvas/apt-github/releases).
 
 The postinstall script automatically generates the GPG signing key. To regenerate it manually:
 
@@ -106,7 +100,7 @@ deb [signed-by=/etc/apt/keyrings/apt-github.gpg] github://OWNER/REPO?versions=20
 
 ### Cache
 
-Release metadata and package control data are cached locally at `/var/cache/apt-github/` to minimize GitHub API calls and avoid rate limits. The release metadata cache has a 5-minute TTL; control metadata is cached indefinitely (keyed by URL and file size).
+Release metadata and package control data are cached locally at `/var/cache/apt-github/` in a tree organized by `{owner}/{repo}/{tag}/`. The release metadata cache has a 5-minute TTL; control metadata and downloaded `.deb` files are cached indefinitely. Stale tag directories are automatically removed when releases are refreshed.
 
 To clear the cache:
 

@@ -1,9 +1,7 @@
 package cache
 
 import (
-	"crypto/sha256"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -11,15 +9,10 @@ import (
 
 const (
 	DefaultBaseDir = "/var/cache/apt-github"
-	controlSubdir  = "control"
-	releasesSubdir = "releases"
-	packagesSubdir = "packages"
 	releasesTTL    = 5 * time.Minute
 )
 
 type Entry struct {
-	URL    string  `json:"url"`
-	Size   int64   `json:"size"`
 	Fields []Field `json:"fields"`
 }
 
@@ -41,8 +34,8 @@ func New(baseDir string) *DiskCache {
 	return &DiskCache{baseDir: baseDir}
 }
 
-func (c *DiskCache) GetControl(url string, size int64) (*Entry, bool) {
-	path := c.hashPath(controlSubdir, url)
+func (c *DiskCache) GetControl(owner, repo, tag string) (*Entry, bool) {
+	path := filepath.Join(c.baseDir, owner, repo, tag, "control.json")
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -54,15 +47,11 @@ func (c *DiskCache) GetControl(url string, size int64) (*Entry, bool) {
 		return nil, false
 	}
 
-	if entry.URL != url || entry.Size != size {
-		return nil, false
-	}
-
 	return &entry, true
 }
 
-func (c *DiskCache) PutControl(entry *Entry) error {
-	dir := filepath.Join(c.baseDir, controlSubdir)
+func (c *DiskCache) PutControl(owner, repo, tag string, entry *Entry) error {
+	dir := filepath.Join(c.baseDir, owner, repo, tag)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
@@ -72,11 +61,11 @@ func (c *DiskCache) PutControl(entry *Entry) error {
 		return err
 	}
 
-	return os.WriteFile(c.hashPath(controlSubdir, entry.URL), data, 0644)
+	return os.WriteFile(filepath.Join(dir, "control.json"), data, 0644)
 }
 
-func (c *DiskCache) GetReleases(key string) (json.RawMessage, bool) {
-	path := c.hashPath(releasesSubdir, key)
+func (c *DiskCache) GetReleases(owner, repo string) (json.RawMessage, bool) {
+	path := filepath.Join(c.baseDir, owner, repo, "releases.json")
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -95,8 +84,8 @@ func (c *DiskCache) GetReleases(key string) (json.RawMessage, bool) {
 	return entry.Data, true
 }
 
-func (c *DiskCache) PutReleases(key string, data json.RawMessage) error {
-	dir := filepath.Join(c.baseDir, releasesSubdir)
+func (c *DiskCache) PutReleases(owner, repo string, data json.RawMessage) error {
+	dir := filepath.Join(c.baseDir, owner, repo)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
@@ -111,11 +100,11 @@ func (c *DiskCache) PutReleases(key string, data json.RawMessage) error {
 		return err
 	}
 
-	return os.WriteFile(c.hashPath(releasesSubdir, key), raw, 0644)
+	return os.WriteFile(filepath.Join(dir, "releases.json"), raw, 0644)
 }
 
-func (c *DiskCache) GetPackage(poolPath string) (string, bool) {
-	path := filepath.Join(c.baseDir, packagesSubdir, poolPath)
+func (c *DiskCache) GetPackage(owner, repo, tag, filename string) (string, bool) {
+	path := filepath.Join(c.baseDir, owner, repo, tag, filename)
 
 	if _, err := os.Stat(path); err != nil {
 		return "", false
@@ -124,12 +113,13 @@ func (c *DiskCache) GetPackage(poolPath string) (string, bool) {
 	return path, true
 }
 
-func (c *DiskCache) PutPackage(poolPath string, data []byte) (string, error) {
-	path := filepath.Join(c.baseDir, packagesSubdir, poolPath)
-
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+func (c *DiskCache) PutPackage(owner, repo, tag, filename string, data []byte) (string, error) {
+	dir := filepath.Join(c.baseDir, owner, repo, tag)
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", err
 	}
+
+	path := filepath.Join(dir, filename)
 
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		return "", err
@@ -138,45 +128,31 @@ func (c *DiskCache) PutPackage(poolPath string, data []byte) (string, error) {
 	return path, nil
 }
 
-func (c *DiskCache) CleanStalePackages(repoPrefix string, validPaths map[string]bool) error {
-	repoDir := filepath.Join(c.baseDir, packagesSubdir, repoPrefix)
+func (c *DiskCache) CleanStaleTags(owner, repo string, validTags map[string]bool) error {
+	repoDir := filepath.Join(c.baseDir, owner, repo)
 
-	if _, err := os.Stat(repoDir); os.IsNotExist(err) {
-		return nil
+	entries, err := os.ReadDir(repoDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+
+		return err
 	}
 
-	return filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
 		}
 
-		if info.IsDir() {
-			return nil
+		if !validTags[entry.Name()] {
+			os.RemoveAll(filepath.Join(repoDir, entry.Name()))
 		}
+	}
 
-		rel, err := filepath.Rel(filepath.Join(c.baseDir, packagesSubdir), path)
-		if err != nil {
-			return nil
-		}
-
-		if !validPaths[rel] {
-			os.Remove(path)
-		}
-
-		return nil
-	})
+	return nil
 }
 
 func (c *DiskCache) Clean() error {
 	return os.RemoveAll(c.baseDir)
-}
-
-func (c *DiskCache) hashPath(subdir, key string) string {
-	return c.pathWithExt(subdir, key, ".json")
-}
-
-func (c *DiskCache) pathWithExt(subdir, key, ext string) string {
-	hash := sha256.Sum256([]byte(key))
-
-	return filepath.Join(c.baseDir, subdir, fmt.Sprintf("%x%s", hash, ext))
 }
