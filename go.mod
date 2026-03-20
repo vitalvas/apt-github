@@ -1,4 +1,4 @@
-module github.com/vitalvas/apt-github
+module github.com/vitalvas/apt-transport-github
 
 go 1.26.1
 

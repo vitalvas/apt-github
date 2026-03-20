@@ -1,10 +1,10 @@
-# apt-github
+# apt-transport-github
 
 APT transport method for installing `.deb` packages directly from GitHub Releases.
 
 ## Overview
 
-`apt-github` is an APT transport plugin that allows you to use GitHub repositories as APT package sources. It fetches `.deb` packages from GitHub Releases, verifies tag signatures via the GitHub API, and signs APT repository metadata with a local GPG key.
+`apt-transport-github` is an APT transport plugin that allows you to use GitHub repositories as APT package sources. It fetches `.deb` packages from GitHub Releases, verifies tag signatures via the GitHub API, and signs APT repository metadata with a local GPG key.
 
 Designed to work with [goreleaser](https://goreleaser.com/) projects that publish `.deb` packages as release assets.
 
@@ -33,7 +33,7 @@ APT verifies signature via signed-by keyring
 
 ## Installation
 
-Download and install the latest `.deb` package from [GitHub Releases](https://github.com/vitalvas/apt-github/releases).
+Download and install the latest `.deb` package from [GitHub Releases](https://github.com/vitalvas/apt-transport-github/releases).
 
 The postinstall script automatically generates the GPG signing key. To regenerate it manually:
 
@@ -42,15 +42,15 @@ sudo /usr/lib/apt/methods/github setup
 ```
 
 The signing key is stored at:
-- Private key in `/etc/apt-github/gpg/`
-- Public key at `/etc/apt/keyrings/apt-github.gpg`
+- Private key in `/etc/apt-transport-github/gpg/`
+- Public key at `/etc/apt/keyrings/apt-transport-github.gpg`
 
 ## Usage
 
 Add a GitHub repository as an APT source:
 
 ```bash
-echo 'deb [signed-by=/etc/apt/keyrings/apt-github.gpg] github://OWNER/REPO stable main' \
+echo 'deb [signed-by=/etc/apt/keyrings/apt-transport-github.gpg] github://OWNER/REPO stable main' \
   | sudo tee /etc/apt/sources.list.d/REPO.list
 ```
 
@@ -63,14 +63,14 @@ sudo apt install PACKAGE_NAME
 
 ### Example
 
-Once installed, apt-github can manage its own updates:
+Once installed, apt-transport-github can manage its own updates:
 
 ```bash
-echo 'deb [signed-by=/etc/apt/keyrings/apt-github.gpg] github://vitalvas/apt-github stable main' \
-  | sudo tee /etc/apt/sources.list.d/apt-github.list
+echo 'deb [signed-by=/etc/apt/keyrings/apt-transport-github.gpg] github://vitalvas/apt-transport-github stable main' \
+  | sudo tee /etc/apt/sources.list.d/apt-transport-github.list
 
 sudo apt update
-sudo apt install apt-github
+sudo apt install apt-transport-github
 ```
 
 ### DEB822 Format
@@ -78,12 +78,12 @@ sudo apt install apt-github
 You can also use the modern DEB822 format (`.sources` files):
 
 ```bash
-cat <<EOF | sudo tee /etc/apt/sources.list.d/apt-github.sources
+cat <<EOF | sudo tee /etc/apt/sources.list.d/apt-transport-github.sources
 Types: deb
-URIs: github://vitalvas/apt-github
+URIs: github://vitalvas/apt-transport-github
 Suites: stable
 Components: main
-Signed-By: /etc/apt/keyrings/apt-github.gpg
+Signed-By: /etc/apt/keyrings/apt-transport-github.gpg
 EOF
 ```
 
@@ -92,7 +92,7 @@ EOF
 By default, the last 3 releases are available for version pinning. To change the limit, add the `versions` query parameter:
 
 ```
-deb [signed-by=/etc/apt/keyrings/apt-github.gpg] github://OWNER/REPO?versions=20 stable main
+deb [signed-by=/etc/apt/keyrings/apt-transport-github.gpg] github://OWNER/REPO?versions=20 stable main
 ```
 
 > [!WARNING]
@@ -105,16 +105,16 @@ APT priority pinning lets you control how packages from GitHub repos are preferr
 Pin a specific repo higher than default:
 
 ```
-# /etc/apt/preferences.d/apt-github.pref
+# /etc/apt/preferences.d/apt-transport-github.pref
 Package: *
-Pin: release o=github.com,l=vitalvas/apt-github
+Pin: release o=github.com,l=vitalvas/apt-transport-github
 Pin-Priority: 990
 ```
 
 Pin all GitHub repos lower than official:
 
 ```
-# /etc/apt/preferences.d/apt-github.pref
+# /etc/apt/preferences.d/apt-transport-github.pref
 Package: *
 Pin: release o=github.com
 Pin-Priority: 400
@@ -128,7 +128,7 @@ apt-cache policy <package-name>
 
 ### Cache
 
-Release metadata and package control data are cached locally at `/var/cache/apt-github/` in a tree organized by `{owner}/{repo}/{tag}/`. The release metadata cache has a 5-minute TTL; control metadata and downloaded `.deb` files are cached indefinitely. Stale tag directories are automatically removed when releases are refreshed.
+Release metadata and package control data are cached locally at `/var/cache/apt-transport-github/` in a tree organized by `{owner}/{repo}/{tag}/`. The release metadata cache has a 5-minute TTL; control metadata and downloaded `.deb` files are cached indefinitely. Stale tag directories are automatically removed when releases are refreshed.
 
 To clear the cache:
 
@@ -141,13 +141,13 @@ sudo /usr/lib/apt/methods/github clean
 To avoid GitHub API rate limits (60 requests/hour unauthenticated), provide a Personal Access Token (PAT). The token is read from the following sources in order:
 
 1. Environment variable `GITHUB_TOKEN`
-2. File `/etc/apt-github/token`
+2. File `/etc/apt-transport-github/token`
 
 To set up a token:
 
 ```bash
-echo "ghp_yourtoken" | sudo tee /etc/apt-github/token
-sudo chmod 600 /etc/apt-github/token
+echo "ghp_yourtoken" | sudo tee /etc/apt-transport-github/token
+sudo chmod 600 /etc/apt-transport-github/token
 ```
 
 A token with no scopes (public repo access only) is sufficient.

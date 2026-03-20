@@ -331,7 +331,7 @@ func TestVerifyTagSignature(t *testing.T) {
 
 func TestUserAgentHeader(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Contains(t, r.Header.Get("User-Agent"), "apt-github")
+		assert.Contains(t, r.Header.Get("User-Agent"), "apt-transport-github")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode([]Release{{TagName: "v1.0.0"}})
 	}))

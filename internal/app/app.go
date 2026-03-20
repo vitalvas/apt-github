@@ -6,11 +6,11 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/vitalvas/apt-github/internal/cache"
-	"github.com/vitalvas/apt-github/internal/github"
-	"github.com/vitalvas/apt-github/internal/method"
-	"github.com/vitalvas/apt-github/internal/setup"
-	"github.com/vitalvas/apt-github/internal/signing"
+	"github.com/vitalvas/apt-transport-github/internal/cache"
+	"github.com/vitalvas/apt-transport-github/internal/github"
+	"github.com/vitalvas/apt-transport-github/internal/method"
+	"github.com/vitalvas/apt-transport-github/internal/setup"
+	"github.com/vitalvas/apt-transport-github/internal/signing"
 )
 
 func NewRootCmd(version string) *cobra.Command {
@@ -21,7 +21,7 @@ func NewRootCmdWithIO(version string, stdin io.Reader, stdout io.Writer) *cobra.
 	github.SetVersion(version)
 
 	rootCmd := &cobra.Command{
-		Use:          "apt-github",
+		Use:          "apt-transport-github",
 		Short:        "APT transport method for GitHub releases",
 		Version:      version,
 		SilenceUsage: true,

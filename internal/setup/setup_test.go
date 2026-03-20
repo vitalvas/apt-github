@@ -30,7 +30,7 @@ func TestRunSuccess(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	gpgHome := filepath.Join(tmpDir, "gpg")
-	pubKeyPath := filepath.Join(tmpDir, "keyrings", "apt-github.gpg")
+	pubKeyPath := filepath.Join(tmpDir, "keyrings", "apt-transport-github.gpg")
 
 	var buf bytes.Buffer
 

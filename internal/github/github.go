@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	tokenFile  = "/etc/apt-github/token"
+	tokenFile  = "/etc/apt-transport-github/token"
 	appVersion = "dev"
 )
 
@@ -19,7 +19,7 @@ func SetVersion(v string) {
 }
 
 func userAgent() string {
-	return fmt.Sprintf("Mozilla/5.0 (compatible; apt-github/%s; +https://github.com/vitalvas/apt-github)", appVersion)
+	return fmt.Sprintf("Mozilla/5.0 (compatible; apt-transport-github/%s; +https://github.com/vitalvas/apt-transport-github)", appVersion)
 }
 
 type Client struct {

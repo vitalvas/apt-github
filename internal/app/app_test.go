@@ -24,7 +24,7 @@ func TestRootCmdRunsMethod(t *testing.T) {
 func TestNewRootCmd(t *testing.T) {
 	cmd := NewRootCmd("1.2.3")
 
-	assert.Equal(t, "apt-github", cmd.Use)
+	assert.Equal(t, "apt-transport-github", cmd.Use)
 	assert.Equal(t, "1.2.3", cmd.Version)
 	assert.NotNil(t, cmd.RunE)
 }

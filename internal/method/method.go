@@ -17,10 +17,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vitalvas/apt-github/internal/cache"
-	"github.com/vitalvas/apt-github/internal/deb"
-	"github.com/vitalvas/apt-github/internal/github"
-	"github.com/vitalvas/apt-github/internal/signing"
+	"github.com/vitalvas/apt-transport-github/internal/cache"
+	"github.com/vitalvas/apt-transport-github/internal/deb"
+	"github.com/vitalvas/apt-transport-github/internal/github"
+	"github.com/vitalvas/apt-transport-github/internal/signing"
 )
 
 type Method struct {
@@ -313,7 +313,7 @@ func (m *Method) loadControlFields(info github.DebInfo, owner, repo, tag, filena
 
 func (m *Method) handleInRelease(parsed *parsedURI, uri, filename string, out io.Writer) error {
 	if m.signer == nil {
-		return sendFailure(out, uri, "signing not configured, run: apt-github setup")
+		return sendFailure(out, uri, "signing not configured, run: apt-transport-github setup")
 	}
 
 	state, err := m.loadRepo(parsed, out)

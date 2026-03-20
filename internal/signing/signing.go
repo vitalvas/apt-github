@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	DefaultGPGHome = "/etc/apt-github/gpg"
-	DefaultPubKey  = "/etc/apt/keyrings/apt-github.gpg"
-	KeyName        = "apt-github (APT GitHub Transport)"
+	DefaultGPGHome = "/etc/apt-transport-github/gpg"
+	DefaultPubKey  = "/etc/apt/keyrings/apt-transport-github.gpg"
+	KeyName        = "apt-transport-github (APT GitHub Transport)"
 
 	maxSocketPathLen = 70
 )
@@ -118,7 +118,7 @@ func ensureShortHomedir(gpgHome string) (string, func(), error) {
 		return gpgHome, nil, nil
 	}
 
-	shortDir, err := os.MkdirTemp("/tmp", "apt-github-gpg-")
+	shortDir, err := os.MkdirTemp("/tmp", "apt-transport-github-gpg-")
 	if err != nil {
 		return "", nil, err
 	}

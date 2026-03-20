@@ -2,6 +2,7 @@ package cache
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,7 +10,7 @@ import (
 )
 
 const (
-	DefaultBaseDir = "/var/cache/apt-github"
+	DefaultBaseDir = "/var/cache/apt-transport-github"
 	releasesTTL    = 5 * time.Minute
 )
 
@@ -36,7 +37,7 @@ func New(baseDir string) *DiskCache {
 }
 
 func controlFilename(debFilename string) string {
-	return strings.TrimSuffix(debFilename, ".deb") + ".json"
+	return fmt.Sprintf("%s.json", strings.TrimSuffix(debFilename, ".deb"))
 }
 
 func (c *DiskCache) GetControl(owner, repo, tag, filename string) (*Entry, bool) {

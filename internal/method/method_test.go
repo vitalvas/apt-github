@@ -16,7 +16,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/vitalvas/apt-github/internal/github"
+	"github.com/vitalvas/apt-transport-github/internal/github"
 )
 
 func TestParseURI(t *testing.T) {

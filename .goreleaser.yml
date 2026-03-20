@@ -4,7 +4,7 @@ before:
   hooks:
     - go mod tidy
 builds:
-  - id: apt-github
+  - id: apt-transport-github
     binary: github
     env:
       - CGO_ENABLED=0
@@ -19,14 +19,14 @@ builds:
       - -X main.commit={{.Commit}}
       - -X main.date={{.Date}}
 nfpms:
-  - id: apt-github
-    package_name: apt-github
+  - id: apt-transport-github
+    package_name: apt-transport-github
     ids:
-      - apt-github
+      - apt-transport-github
     bindir: /usr/lib/apt/methods
     maintainer: vitalvas
     vendor: vitalvas
-    homepage: https://github.com/vitalvas/apt-github
+    homepage: https://github.com/vitalvas/apt-transport-github
     description: APT transport method for GitHub releases
     license: MIT
     formats:
@@ -45,7 +45,7 @@ changelog:
 release:
   github:
     owner: vitalvas
-    name: apt-github
+    name: apt-transport-github
   draft: false
   prerelease: auto
   mode: keep-existing

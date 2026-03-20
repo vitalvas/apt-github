@@ -23,7 +23,7 @@ func TestSetupAndClearSign(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	gpgHome := filepath.Join(tmpDir, "gpg")
-	pubKeyPath := filepath.Join(tmpDir, "keyrings", "apt-github.gpg")
+	pubKeyPath := filepath.Join(tmpDir, "keyrings", "apt-transport-github.gpg")
 
 	err := Setup(gpgHome, pubKeyPath)
 	require.NoError(t, err)
@@ -51,7 +51,7 @@ func TestClearSignVerify(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	gpgHome := filepath.Join(tmpDir, "gpg")
-	pubKeyPath := filepath.Join(tmpDir, "keyrings", "apt-github.gpg")
+	pubKeyPath := filepath.Join(tmpDir, "keyrings", "apt-transport-github.gpg")
 
 	require.NoError(t, Setup(gpgHome, pubKeyPath))
 
@@ -98,7 +98,7 @@ func TestSetupCreatesDirectories(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	gpgHome := filepath.Join(tmpDir, "deep", "nested", "gpg")
-	pubKeyPath := filepath.Join(tmpDir, "deep", "keyrings", "apt-github.gpg")
+	pubKeyPath := filepath.Join(tmpDir, "deep", "keyrings", "apt-transport-github.gpg")
 
 	err := Setup(gpgHome, pubKeyPath)
 	require.NoError(t, err)
@@ -133,7 +133,7 @@ func TestEnsureShortHomedir(t *testing.T) {
 		defer cleanup()
 
 		assert.NotEqual(t, longPath, result)
-		assert.True(t, strings.HasPrefix(result, "/tmp/apt-github-gpg-"))
+		assert.True(t, strings.HasPrefix(result, "/tmp/apt-transport-github-gpg-"))
 
 		target, err := os.Readlink(result)
 		require.NoError(t, err)

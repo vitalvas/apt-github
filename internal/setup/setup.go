@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/vitalvas/apt-github/internal/signing"
+	"github.com/vitalvas/apt-transport-github/internal/signing"
 )
 
 func Run(w io.Writer, euid int, gpgHome, pubKeyPath string) error {
