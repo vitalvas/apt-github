@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/vitalvas/apt-github/compare/v0.6.0...v0.7.0) (2026-03-20)
+
+
+### Miscellaneous Chores
+
+* release 0.7.0 ([5cac185](https://github.com/vitalvas/apt-github/commit/5cac185165ee096db56b3bd02a5bdd63262bd5ef))
+
 ## [0.6.0](https://github.com/vitalvas/apt-github/compare/v0.5.0...v0.6.0) (2026-03-20)
 
 
