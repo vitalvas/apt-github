@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/vitalvas/apt-github/compare/v0.7.1...v0.7.2) (2026-03-20)
+
+
+### Bug Fixes
+
+* change Release Origin from github to github.com ([a31f6d8](https://github.com/vitalvas/apt-github/commit/a31f6d85eb930b68a71eec78138e97547a3fff85))
+
 ## [0.7.1](https://github.com/vitalvas/apt-github/compare/v0.7.0...v0.7.1) (2026-03-20)
 
 
