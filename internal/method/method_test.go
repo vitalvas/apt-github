@@ -518,6 +518,32 @@ func TestMethodHandlePackages(t *testing.T) {
 	assert.NotContains(t, pkgStr, "arm64")
 }
 
+func TestMethodHandlePackagesGz(t *testing.T) {
+	server := newTestServer(t)
+	m := newTestMethod(t, server)
+
+	tmpDir := t.TempDir()
+	filename := filepath.Join(tmpDir, "Packages.gz")
+
+	input := buildAcquireInput("github://owner/testpkg/dists/stable/main/binary-amd64/Packages.gz", filename)
+	var out bytes.Buffer
+
+	m.Run(strings.NewReader(input), &out)
+
+	reader := bufio.NewReader(&out)
+
+	_, err := ReadMessage(reader)
+	require.NoError(t, err)
+
+	_, err = ReadMessage(reader)
+	require.NoError(t, err)
+
+	msg, err := ReadMessage(reader)
+	require.NoError(t, err)
+	assert.Equal(t, 201, msg.Code)
+	assert.FileExists(t, filename)
+}
+
 func TestMethodHandlePool(t *testing.T) {
 	server := newTestServer(t)
 	m := newTestMethod(t, server)
@@ -534,4 +560,52 @@ func TestMethodHandlePool(t *testing.T) {
 	m.Run(strings.NewReader(input), &out)
 
 	assert.FileExists(t, debFilename)
+
+	reader := bufio.NewReader(&out)
+
+	// Skip capabilities
+	_, err := ReadMessage(reader)
+	require.NoError(t, err)
+
+	// Skip status (loadRepo)
+	_, err = ReadMessage(reader)
+	require.NoError(t, err)
+
+	// Packages done
+	msg, err := ReadMessage(reader)
+	require.NoError(t, err)
+	assert.Equal(t, 201, msg.Code)
+
+	// Pool URI Start
+	msg, err = ReadMessage(reader)
+	require.NoError(t, err)
+	assert.Equal(t, 200, msg.Code)
+
+	// Pool URI Done (served from cache)
+	msg, err = ReadMessage(reader)
+	require.NoError(t, err)
+	assert.Equal(t, 201, msg.Code)
+	assert.NotEmpty(t, msg.Get("SHA256-Hash"))
+}
+
+func TestMethodHandleReleaseGpg(t *testing.T) {
+	server := newTestServer(t)
+	m := newTestMethod(t, server)
+
+	tmpDir := t.TempDir()
+	filename := filepath.Join(tmpDir, "Release.gpg")
+
+	input := buildAcquireInput("github://owner/testpkg/dists/stable/Release.gpg", filename)
+	var out bytes.Buffer
+
+	m.Run(strings.NewReader(input), &out)
+
+	reader := bufio.NewReader(&out)
+
+	_, err := ReadMessage(reader)
+	require.NoError(t, err)
+
+	msg, err := ReadMessage(reader)
+	require.NoError(t, err)
+	assert.Equal(t, 400, msg.Code)
 }

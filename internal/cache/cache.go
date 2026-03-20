@@ -13,6 +13,7 @@ const (
 	DefaultBaseDir = "/var/cache/apt-github"
 	controlSubdir  = "control"
 	releasesSubdir = "releases"
+	packagesSubdir = "packages"
 	releasesTTL    = 5 * time.Minute
 )
 
@@ -113,12 +114,41 @@ func (c *DiskCache) PutReleases(key string, data json.RawMessage) error {
 	return os.WriteFile(c.hashPath(releasesSubdir, key), raw, 0644)
 }
 
+func (c *DiskCache) GetPackage(url string) (string, bool) {
+	path := c.pathWithExt(packagesSubdir, url, ".deb")
+
+	if _, err := os.Stat(path); err != nil {
+		return "", false
+	}
+
+	return path, true
+}
+
+func (c *DiskCache) PutPackage(url string, data []byte) (string, error) {
+	dir := filepath.Join(c.baseDir, packagesSubdir)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+
+	path := c.pathWithExt(packagesSubdir, url, ".deb")
+
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return "", err
+	}
+
+	return path, nil
+}
+
 func (c *DiskCache) Clean() error {
 	return os.RemoveAll(c.baseDir)
 }
 
 func (c *DiskCache) hashPath(subdir, key string) string {
+	return c.pathWithExt(subdir, key, ".json")
+}
+
+func (c *DiskCache) pathWithExt(subdir, key, ext string) string {
 	hash := sha256.Sum256([]byte(key))
 
-	return filepath.Join(c.baseDir, subdir, fmt.Sprintf("%x.json", hash))
+	return filepath.Join(c.baseDir, subdir, fmt.Sprintf("%x%s", hash, ext))
 }

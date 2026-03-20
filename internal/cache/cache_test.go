@@ -118,6 +118,34 @@ func TestReleasesCache(t *testing.T) {
 	})
 }
 
+func TestPackageCache(t *testing.T) {
+	t.Run("put and get", func(t *testing.T) {
+		c := New(t.TempDir())
+
+		debData := []byte("fake deb content")
+		url := "https://example.com/test_1.0_amd64.deb"
+
+		path, err := c.PutPackage(url, debData)
+		require.NoError(t, err)
+		assert.Contains(t, path, ".deb")
+
+		cachedPath, ok := c.GetPackage(url)
+		require.True(t, ok)
+		assert.Equal(t, path, cachedPath)
+
+		got, err := os.ReadFile(cachedPath)
+		require.NoError(t, err)
+		assert.Equal(t, debData, got)
+	})
+
+	t.Run("miss on unknown url", func(t *testing.T) {
+		c := New(t.TempDir())
+
+		_, ok := c.GetPackage("https://example.com/missing.deb")
+		assert.False(t, ok)
+	})
+}
+
 func TestClean(t *testing.T) {
 	c := New(t.TempDir())
 

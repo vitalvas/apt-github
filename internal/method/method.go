@@ -269,6 +269,8 @@ func (m *Method) loadControlFields(info github.DebInfo) []cache.Field {
 		return nil
 	}
 
+	m.diskCache.PutPackage(info.Asset.BrowserDownloadURL, debData)
+
 	ctrl, err := deb.ParseControl(debData)
 	if err != nil {
 		return nil
@@ -433,20 +435,27 @@ func (m *Method) handlePool(parsed *parsedURI, uri, filename string, out io.Writ
 		return err
 	}
 
+	if cachedPath, ok := m.diskCache.GetPackage(downloadURL); ok {
+		if err := copyFile(cachedPath, filename); err == nil {
+			return m.respondPoolDone(uri, filename, out)
+		}
+	}
+
 	size, err := m.client.DownloadFile(downloadURL, filename)
 	if err != nil {
 		return sendFailure(out, uri, fmt.Sprintf("download failed: %s", err))
-	}
-
-	hashes, err := hashFile(filename)
-	if err != nil {
-		return sendFailure(out, uri, fmt.Sprintf("hash failed: %s", err))
 	}
 
 	done := &Message{Code: 201, Text: "URI Done"}
 	done.Set("URI", uri)
 	done.Set("Filename", filename)
 	done.Set("Size", fmt.Sprintf("%d", size))
+
+	hashes, err := hashFile(filename)
+	if err != nil {
+		return sendFailure(out, uri, fmt.Sprintf("hash failed: %s", err))
+	}
+
 	done.Set("MD5-Hash", hashes.md5)
 	done.Set("SHA256-Hash", hashes.sha256)
 
@@ -573,6 +582,45 @@ func writeFileAndRespond(out io.Writer, uri, filename string, content []byte) er
 	done.Set("SHA256-Hash", fmt.Sprintf("%x", sha256Hash))
 
 	return done.Write(out)
+}
+
+func (m *Method) respondPoolDone(uri, filename string, out io.Writer) error {
+	hashes, err := hashFile(filename)
+	if err != nil {
+		return sendFailure(out, uri, fmt.Sprintf("hash failed: %s", err))
+	}
+
+	info, err := os.Stat(filename)
+	if err != nil {
+		return sendFailure(out, uri, fmt.Sprintf("stat failed: %s", err))
+	}
+
+	done := &Message{Code: 201, Text: "URI Done"}
+	done.Set("URI", uri)
+	done.Set("Filename", filename)
+	done.Set("Size", fmt.Sprintf("%d", info.Size()))
+	done.Set("MD5-Hash", hashes.md5)
+	done.Set("SHA256-Hash", hashes.sha256)
+
+	return done.Write(out)
+}
+
+func copyFile(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+
+	return err
 }
 
 func sendFailure(out io.Writer, uri, message string) error {
