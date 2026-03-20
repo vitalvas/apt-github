@@ -101,7 +101,8 @@ By default, the last 3 releases are available for version pinning. To change the
 deb [signed-by=/etc/apt/keyrings/apt-github.gpg] github://OWNER/REPO?versions=20 stable main
 ```
 
-> **Warning:** Each version requires downloading the `.deb` file to extract package metadata during `apt update` (results are cached on disk for subsequent runs). Higher version counts increase the initial `apt update` time and GitHub API usage. The unauthenticated GitHub API rate limit is 60 requests per hour.
+> [!WARNING]
+> Each version requires downloading the `.deb` file to extract package metadata during `apt update` (results are cached on disk for subsequent runs). Higher version counts increase the initial `apt update` time and GitHub API usage. The unauthenticated GitHub API rate limit is 60 requests per hour.
 
 ### Cache
 
