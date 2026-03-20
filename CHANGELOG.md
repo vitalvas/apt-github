@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/vitalvas/apt-github/compare/v0.2.0...v0.3.0) (2026-03-20)
+
+
+### Features
+
+* add multi-version support, disk cache, and clean command ([c0e5560](https://github.com/vitalvas/apt-github/commit/c0e55603b3d9b9282e3621192aca20565beecf46))
+
+
+### Bug Fixes
+
+* use GitHub-supported admonition format for warning in README ([a1e7155](https://github.com/vitalvas/apt-github/commit/a1e7155d002e251a9b8b2de495299cacb4857b6e))
+
 ## [0.2.0](https://github.com/vitalvas/apt-github/compare/v0.1.0...v0.2.0) (2026-03-20)
 
 
