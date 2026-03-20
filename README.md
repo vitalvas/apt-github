@@ -111,7 +111,7 @@ Release metadata and package control data are cached locally at `/var/cache/apt-
 To clear the cache:
 
 ```bash
-sudo apt-github clean
+sudo /usr/lib/apt/methods/github clean
 ```
 
 ### Authentication
