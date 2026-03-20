@@ -30,27 +30,40 @@ func TestParseURI(t *testing.T) {
 			name: "release path",
 			uri:  "github://owner/repo/dists/stable/Release",
 			expected: &parsedURI{
-				Owner: "owner",
-				Repo:  "repo",
-				Path:  "dists/stable/Release",
+				Owner:    "owner",
+				Repo:     "repo",
+				Path:     "dists/stable/Release",
+				Versions: defaultVersions,
 			},
 		},
 		{
 			name: "packages path",
 			uri:  "github://vitalvas/systemd-supervisord/dists/stable/main/binary-amd64/Packages",
 			expected: &parsedURI{
-				Owner: "vitalvas",
-				Repo:  "systemd-supervisord",
-				Path:  "dists/stable/main/binary-amd64/Packages",
+				Owner:    "vitalvas",
+				Repo:     "systemd-supervisord",
+				Path:     "dists/stable/main/binary-amd64/Packages",
+				Versions: defaultVersions,
 			},
 		},
 		{
 			name: "pool path",
 			uri:  "github://owner/repo/pool/v1.0.0/test_1.0.0_amd64.deb",
 			expected: &parsedURI{
-				Owner: "owner",
-				Repo:  "repo",
-				Path:  "pool/v1.0.0/test_1.0.0_amd64.deb",
+				Owner:    "owner",
+				Repo:     "repo",
+				Path:     "pool/v1.0.0/test_1.0.0_amd64.deb",
+				Versions: defaultVersions,
+			},
+		},
+		{
+			name: "custom versions",
+			uri:  "github://owner/repo/dists/stable/Release?versions=20",
+			expected: &parsedURI{
+				Owner:    "owner",
+				Repo:     "repo",
+				Path:     "dists/stable/Release",
+				Versions: 20,
 			},
 		},
 		{
@@ -159,42 +172,46 @@ func buildTestDeb(t *testing.T, controlContent string) []byte {
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
 
-	amd64Control := `Package: testpkg
+	amd64ControlV1 := `Package: testpkg
 Version: 1.0.0
 Architecture: amd64
 Maintainer: Test <test@example.com>
 Depends: libc6 (>= 2.17), gnupg
 Description: Test package
 `
-	arm64Control := `Package: testpkg
+	arm64ControlV1 := `Package: testpkg
 Version: 1.0.0
 Architecture: arm64
 Maintainer: Test <test@example.com>
 Depends: libc6 (>= 2.17), gnupg
 Description: Test package
 `
+	amd64ControlV09 := `Package: testpkg
+Version: 0.9.0
+Architecture: amd64
+Maintainer: Test <test@example.com>
+Description: Test package
+`
 
-	amd64Deb := buildTestDeb(t, amd64Control)
-	arm64Deb := buildTestDeb(t, arm64Control)
+	amd64DebV1 := buildTestDeb(t, amd64ControlV1)
+	arm64DebV1 := buildTestDeb(t, arm64ControlV1)
+	amd64DebV09 := buildTestDeb(t, amd64ControlV09)
 
-	release := github.Release{
-		TagName:     "v1.0.0",
-		PublishedAt: "2024-01-01T00:00:00Z",
-		Assets: []github.Asset{
-			{
-				Name:               "testpkg_1.0.0_linux_amd64.deb",
-				Size:               int64(len(amd64Deb)),
-				BrowserDownloadURL: "",
+	releases := []github.Release{
+		{
+			TagName:     "v1.0.0",
+			PublishedAt: "2024-02-01T00:00:00Z",
+			Assets: []github.Asset{
+				{Name: "testpkg_1.0.0_linux_amd64.deb", Size: int64(len(amd64DebV1))},
+				{Name: "testpkg_1.0.0_linux_arm64.deb", Size: int64(len(arm64DebV1))},
+				{Name: "testpkg_1.0.0_checksums.txt", Size: 100},
 			},
-			{
-				Name:               "testpkg_1.0.0_linux_arm64.deb",
-				Size:               int64(len(arm64Deb)),
-				BrowserDownloadURL: "",
-			},
-			{
-				Name:               "testpkg_1.0.0_checksums.txt",
-				Size:               100,
-				BrowserDownloadURL: "",
+		},
+		{
+			TagName:     "v0.9.0",
+			PublishedAt: "2024-01-01T00:00:00Z",
+			Assets: []github.Asset{
+				{Name: "testpkg_0.9.0_linux_amd64.deb", Size: int64(len(amd64DebV09))},
 			},
 		},
 	}
@@ -217,13 +234,15 @@ Description: Test package
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/owner/testpkg/releases/latest":
-			for i := range release.Assets {
-				release.Assets[i].BrowserDownloadURL = fmt.Sprintf("http://%s/download/%s", r.Host, release.Assets[i].Name)
+		case "/repos/owner/testpkg/releases":
+			for ri := range releases {
+				for i := range releases[ri].Assets {
+					releases[ri].Assets[i].BrowserDownloadURL = fmt.Sprintf("http://%s/download/%s", r.Host, releases[ri].Assets[i].Name)
+				}
 			}
 
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(release)
+			json.NewEncoder(w).Encode(releases)
 
 		case "/repos/owner/testpkg/git/ref/tags/v1.0.0":
 			w.Header().Set("Content-Type", "application/json")
@@ -237,10 +256,13 @@ Description: Test package
 			w.Write([]byte(checksums))
 
 		case "/download/testpkg_1.0.0_linux_amd64.deb":
-			w.Write(amd64Deb)
+			w.Write(amd64DebV1)
 
 		case "/download/testpkg_1.0.0_linux_arm64.deb":
-			w.Write(arm64Deb)
+			w.Write(arm64DebV1)
+
+		case "/download/testpkg_0.9.0_linux_amd64.deb":
+			w.Write(amd64DebV09)
 
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -255,11 +277,13 @@ Description: Test package
 func newTestServerUnverified(t *testing.T) *httptest.Server {
 	t.Helper()
 
-	release := github.Release{
-		TagName:     "v2.0.0",
-		PublishedAt: "2024-01-01T00:00:00Z",
-		Assets: []github.Asset{
-			{Name: "testpkg_2.0.0_linux_amd64.deb", Size: 1024, BrowserDownloadURL: ""},
+	releases := []github.Release{
+		{
+			TagName:     "v2.0.0",
+			PublishedAt: "2024-01-01T00:00:00Z",
+			Assets: []github.Asset{
+				{Name: "testpkg_2.0.0_linux_amd64.deb", Size: 1024, BrowserDownloadURL: ""},
+			},
 		},
 	}
 
@@ -277,13 +301,15 @@ func newTestServerUnverified(t *testing.T) *httptest.Server {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/owner/unsigned/releases/latest":
-			for i := range release.Assets {
-				release.Assets[i].BrowserDownloadURL = fmt.Sprintf("http://%s/download/%s", r.Host, release.Assets[i].Name)
+		case "/repos/owner/unsigned/releases":
+			for ri := range releases {
+				for i := range releases[ri].Assets {
+					releases[ri].Assets[i].BrowserDownloadURL = fmt.Sprintf("http://%s/download/%s", r.Host, releases[ri].Assets[i].Name)
+				}
 			}
 
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(release)
+			json.NewEncoder(w).Encode(releases)
 
 		case "/repos/owner/unsigned/git/ref/tags/v2.0.0":
 			w.Header().Set("Content-Type", "application/json")
@@ -303,8 +329,11 @@ func newTestServerUnverified(t *testing.T) *httptest.Server {
 	return server
 }
 
-func newTestMethod(server *httptest.Server) *Method {
-	m := NewWithSigner(&mockSigner{})
+func newTestMethod(t *testing.T, server *httptest.Server) *Method {
+	t.Helper()
+
+	cacheDir := filepath.Join(t.TempDir(), "control-cache")
+	m := NewWithOptions(&mockSigner{}, cacheDir)
 	m.client.BaseURL = server.URL
 	m.client.HTTPClient = server.Client()
 
@@ -313,7 +342,7 @@ func newTestMethod(server *httptest.Server) *Method {
 
 func TestMethodCapabilities(t *testing.T) {
 	server := newTestServer(t)
-	m := newTestMethod(server)
+	m := newTestMethod(t, server)
 
 	var out bytes.Buffer
 
@@ -330,7 +359,7 @@ func TestMethodCapabilities(t *testing.T) {
 
 func TestMethodHandleInRelease(t *testing.T) {
 	server := newTestServer(t)
-	m := newTestMethod(server)
+	m := newTestMethod(t, server)
 
 	tmpDir := t.TempDir()
 	filename := filepath.Join(tmpDir, "InRelease")
@@ -364,7 +393,7 @@ func TestMethodHandleInRelease(t *testing.T) {
 
 func TestMethodHandleInReleaseUnverified(t *testing.T) {
 	server := newTestServerUnverified(t)
-	m := newTestMethod(server)
+	m := newTestMethod(t, server)
 
 	tmpDir := t.TempDir()
 	filename := filepath.Join(tmpDir, "InRelease")
@@ -390,7 +419,8 @@ func TestMethodHandleInReleaseUnverified(t *testing.T) {
 
 func TestMethodHandleInReleaseNoSigner(t *testing.T) {
 	server := newTestServer(t)
-	m := New()
+	cacheDir := filepath.Join(t.TempDir(), "control-cache")
+	m := NewWithOptions(nil, cacheDir)
 	m.client.BaseURL = server.URL
 	m.client.HTTPClient = server.Client()
 
@@ -415,7 +445,7 @@ func TestMethodHandleInReleaseNoSigner(t *testing.T) {
 
 func TestMethodHandleRelease(t *testing.T) {
 	server := newTestServer(t)
-	m := newTestMethod(server)
+	m := newTestMethod(t, server)
 
 	tmpDir := t.TempDir()
 	filename := filepath.Join(tmpDir, "Release")
@@ -451,7 +481,7 @@ func TestMethodHandleRelease(t *testing.T) {
 
 func TestMethodHandlePackages(t *testing.T) {
 	server := newTestServer(t)
-	m := newTestMethod(server)
+	m := newTestMethod(t, server)
 
 	tmpDir := t.TempDir()
 	filename := filepath.Join(tmpDir, "Packages")
@@ -479,16 +509,18 @@ func TestMethodHandlePackages(t *testing.T) {
 	pkgStr := string(content)
 	assert.Contains(t, pkgStr, "Package: testpkg")
 	assert.Contains(t, pkgStr, "Version: 1.0.0")
+	assert.Contains(t, pkgStr, "Version: 0.9.0")
 	assert.Contains(t, pkgStr, "Architecture: amd64")
 	assert.Contains(t, pkgStr, "Depends: libc6 (>= 2.17), gnupg")
 	assert.Contains(t, pkgStr, "Maintainer: Test <test@example.com>")
 	assert.Contains(t, pkgStr, "pool/v1.0.0/testpkg_1.0.0_linux_amd64.deb")
+	assert.Contains(t, pkgStr, "pool/v0.9.0/testpkg_0.9.0_linux_amd64.deb")
 	assert.NotContains(t, pkgStr, "arm64")
 }
 
 func TestMethodHandlePool(t *testing.T) {
 	server := newTestServer(t)
-	m := newTestMethod(server)
+	m := newTestMethod(t, server)
 
 	tmpDir := t.TempDir()
 	debFilename := filepath.Join(tmpDir, "testpkg.deb")

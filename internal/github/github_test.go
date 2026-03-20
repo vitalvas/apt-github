@@ -133,25 +133,35 @@ func TestReleaseCollectDebInfo(t *testing.T) {
 	assert.Equal(t, "myapp", infos[0].Name)
 	assert.Equal(t, "1.2.3", infos[0].Version)
 	assert.Equal(t, "amd64", infos[0].Arch)
+	assert.Equal(t, "v1.2.3", infos[0].Tag)
 	assert.Equal(t, "sha256amd64", infos[0].SHA256)
 
 	assert.Equal(t, "myapp", infos[1].Name)
 	assert.Equal(t, "arm64", infos[1].Arch)
+	assert.Equal(t, "v1.2.3", infos[1].Tag)
 	assert.Equal(t, "sha256arm64", infos[1].SHA256)
 }
 
-func TestClientGetLatestRelease(t *testing.T) {
-	release := Release{
-		TagName: "v1.0.0",
-		Assets: []Asset{
-			{Name: "test_1.0.0_linux_amd64.deb", Size: 500, BrowserDownloadURL: "https://example.com/test.deb"},
+func TestClientGetReleases(t *testing.T) {
+	releases := []Release{
+		{
+			TagName: "v1.0.0",
+			Assets: []Asset{
+				{Name: "test_1.0.0_linux_amd64.deb", Size: 500, BrowserDownloadURL: "https://example.com/test.deb"},
+			},
+		},
+		{
+			TagName: "v0.9.0",
+			Assets: []Asset{
+				{Name: "test_0.9.0_linux_amd64.deb", Size: 400},
+			},
 		},
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/repos/owner/repo/releases/latest", r.URL.Path)
+		assert.Equal(t, "/repos/owner/repo/releases", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(release)
+		json.NewEncoder(w).Encode(releases)
 	}))
 	defer server.Close()
 
@@ -160,13 +170,14 @@ func TestClientGetLatestRelease(t *testing.T) {
 		BaseURL:    server.URL,
 	}
 
-	got, err := client.GetLatestRelease("owner", "repo")
+	got, err := client.GetReleases("owner", "repo", 30)
 	require.NoError(t, err)
-	assert.Equal(t, "v1.0.0", got.TagName)
-	assert.Len(t, got.Assets, 1)
+	require.Len(t, got, 2)
+	assert.Equal(t, "v1.0.0", got[0].TagName)
+	assert.Equal(t, "v0.9.0", got[1].TagName)
 }
 
-func TestClientGetLatestReleaseError(t *testing.T) {
+func TestClientGetReleasesError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
@@ -177,7 +188,7 @@ func TestClientGetLatestReleaseError(t *testing.T) {
 		BaseURL:    server.URL,
 	}
 
-	_, err := client.GetLatestRelease("owner", "repo")
+	_, err := client.GetReleases("owner", "repo", 30)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "404")
 }
@@ -322,7 +333,7 @@ func TestUserAgentHeader(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Contains(t, r.Header.Get("User-Agent"), "apt-github")
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(Release{TagName: "v1.0.0"})
+		json.NewEncoder(w).Encode([]Release{{TagName: "v1.0.0"}})
 	}))
 	defer server.Close()
 
@@ -331,7 +342,7 @@ func TestUserAgentHeader(t *testing.T) {
 		BaseURL:    server.URL,
 	}
 
-	_, err := client.GetLatestRelease("owner", "repo")
+	_, err := client.GetReleases("owner", "repo", 30)
 	require.NoError(t, err)
 }
 

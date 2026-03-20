@@ -6,43 +6,50 @@ import (
 	"compress/gzip"
 	"crypto/md5"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/vitalvas/apt-github/internal/cache"
 	"github.com/vitalvas/apt-github/internal/deb"
 	"github.com/vitalvas/apt-github/internal/github"
 	"github.com/vitalvas/apt-github/internal/signing"
 )
 
 type Method struct {
-	client *github.Client
-	signer signing.Signer
-	cache  map[string]*repoState
+	client    *github.Client
+	signer    signing.Signer
+	diskCache *cache.DiskCache
+	cache     map[string]*repoState
 }
 
 type repoState struct {
-	release  *github.Release
 	debInfos []github.DebInfo
 	assets   map[string]string // pool path -> download URL
 	verified bool
 }
 
 func New() *Method {
-	return &Method{
-		client: github.NewClient(),
-		cache:  make(map[string]*repoState),
-	}
+	return NewWithOptions(nil, cache.DefaultBaseDir)
 }
 
 func NewWithSigner(signer signing.Signer) *Method {
-	m := New()
-	m.signer = signer
+	return NewWithOptions(signer, cache.DefaultBaseDir)
+}
 
-	return m
+func NewWithOptions(signer signing.Signer, cacheDir string) *Method {
+	return &Method{
+		client:    github.NewClient(),
+		signer:    signer,
+		diskCache: cache.New(cacheDir),
+		cache:     make(map[string]*repoState),
+	}
 }
 
 func (m *Method) Run(in io.Reader, out io.Writer) error {
@@ -75,14 +82,23 @@ func (m *Method) Run(in io.Reader, out io.Writer) error {
 	}
 }
 
+const defaultVersions = 3
+
 type parsedURI struct {
-	Owner string
-	Repo  string
-	Path  string
+	Owner    string
+	Repo     string
+	Path     string
+	Versions int
 }
 
 func parseURI(uri string) (*parsedURI, error) {
 	trimmed := strings.TrimPrefix(uri, "github://")
+
+	queryPart := ""
+	if idx := strings.Index(trimmed, "?"); idx >= 0 {
+		queryPart = trimmed[idx+1:]
+		trimmed = trimmed[:idx]
+	}
 
 	parts := strings.SplitN(trimmed, "/", 3)
 	if len(parts) < 2 {
@@ -90,12 +106,24 @@ func parseURI(uri string) (*parsedURI, error) {
 	}
 
 	p := &parsedURI{
-		Owner: parts[0],
-		Repo:  parts[1],
+		Owner:    parts[0],
+		Repo:     parts[1],
+		Versions: defaultVersions,
 	}
 
 	if len(parts) == 3 {
 		p.Path = parts[2]
+	}
+
+	if queryPart != "" {
+		params, err := url.ParseQuery(queryPart)
+		if err == nil {
+			if v := params.Get("versions"); v != "" {
+				if n, err := strconv.Atoi(v); err == nil && n > 0 {
+					p.Versions = n
+				}
+			}
+		}
 	}
 
 	return p, nil
@@ -149,55 +177,57 @@ func (m *Method) loadRepo(parsed *parsedURI, out io.Writer) (*repoState, error) 
 		return nil, err
 	}
 
-	release, err := m.client.GetLatestRelease(parsed.Owner, parsed.Repo)
+	releases, err := m.fetchReleases(parsed.Owner, parsed.Repo, parsed.Versions)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get latest release: %w", err)
+		return nil, fmt.Errorf("failed to get releases: %w", err)
 	}
 
-	verified, err := m.client.VerifyTagSignature(parsed.Owner, parsed.Repo, release.TagName)
+	if len(releases) == 0 {
+		return nil, fmt.Errorf("no releases found")
+	}
+
+	verified, err := m.client.VerifyTagSignature(parsed.Owner, parsed.Repo, releases[0].TagName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify tag signature: %w", err)
 	}
 
-	checksums := make(map[string]string)
-
-	if csAsset := release.FindChecksumsAsset(); csAsset != nil {
-		content, err := m.client.FetchContent(csAsset.BrowserDownloadURL)
-		if err == nil {
-			checksums = github.ParseChecksums(content)
-		}
-	}
-
-	debInfos := release.CollectDebInfo(checksums)
-
-	for i, info := range debInfos {
-		debData, err := m.client.FetchBytes(info.Asset.BrowserDownloadURL)
-		if err != nil {
-			continue
-		}
-
-		ctrl, err := deb.ParseControl(debData)
-		if err != nil {
-			continue
-		}
-
-		for _, f := range ctrl.Fields {
-			debInfos[i].Control = append(debInfos[i].Control, github.ControlField{
-				Key:   f.Key,
-				Value: f.Value,
-			})
-		}
-	}
+	var allDebInfos []github.DebInfo
 
 	assets := make(map[string]string)
-	for _, info := range debInfos {
-		poolPath := fmt.Sprintf("pool/%s/%s", release.TagName, info.Asset.Name)
-		assets[poolPath] = info.Asset.BrowserDownloadURL
+
+	for ri := range releases {
+		release := &releases[ri]
+
+		checksums := make(map[string]string)
+
+		if csAsset := release.FindChecksumsAsset(); csAsset != nil {
+			content, err := m.client.FetchContent(csAsset.BrowserDownloadURL)
+			if err == nil {
+				checksums = github.ParseChecksums(content)
+			}
+		}
+
+		debInfos := release.CollectDebInfo(checksums)
+
+		for i, info := range debInfos {
+			for _, f := range m.loadControlFields(info) {
+				debInfos[i].Control = append(debInfos[i].Control, github.ControlField{
+					Key:   f.Key,
+					Value: f.Value,
+				})
+			}
+		}
+
+		for _, info := range debInfos {
+			poolPath := fmt.Sprintf("pool/%s/%s", release.TagName, info.Asset.Name)
+			assets[poolPath] = info.Asset.BrowserDownloadURL
+		}
+
+		allDebInfos = append(allDebInfos, debInfos...)
 	}
 
 	state := &repoState{
-		release:  release,
-		debInfos: debInfos,
+		debInfos: allDebInfos,
 		assets:   assets,
 		verified: verified,
 	}
@@ -205,6 +235,59 @@ func (m *Method) loadRepo(parsed *parsedURI, out io.Writer) (*repoState, error) 
 	m.cache[key] = state
 
 	return state, nil
+}
+
+func (m *Method) fetchReleases(owner, repo string, limit int) ([]github.Release, error) {
+	cacheKey := fmt.Sprintf("%s/%s?per_page=%d", owner, repo, limit)
+
+	if data, ok := m.diskCache.GetReleases(cacheKey); ok {
+		var releases []github.Release
+		if err := json.Unmarshal(data, &releases); err == nil {
+			return releases, nil
+		}
+	}
+
+	releases, err := m.client.GetReleases(owner, repo, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	if data, err := json.Marshal(releases); err == nil {
+		m.diskCache.PutReleases(cacheKey, data)
+	}
+
+	return releases, nil
+}
+
+func (m *Method) loadControlFields(info github.DebInfo) []cache.Field {
+	if entry, ok := m.diskCache.GetControl(info.Asset.BrowserDownloadURL, info.Asset.Size); ok {
+		return entry.Fields
+	}
+
+	debData, err := m.client.FetchBytes(info.Asset.BrowserDownloadURL)
+	if err != nil {
+		return nil
+	}
+
+	ctrl, err := deb.ParseControl(debData)
+	if err != nil {
+		return nil
+	}
+
+	fields := make([]cache.Field, 0, len(ctrl.Fields))
+	for _, f := range ctrl.Fields {
+		fields = append(fields, cache.Field{Key: f.Key, Value: f.Value})
+	}
+
+	entry := &cache.Entry{
+		URL:    info.Asset.BrowserDownloadURL,
+		Size:   info.Asset.Size,
+		Fields: fields,
+	}
+
+	m.diskCache.PutControl(entry)
+
+	return fields
 }
 
 func (m *Method) handleInRelease(parsed *parsedURI, uri, filename string, out io.Writer) error {
@@ -406,7 +489,7 @@ func (m *Method) generatePackagesContent(state *repoState, arch string) []byte {
 
 		first = false
 
-		poolPath := fmt.Sprintf("pool/%s/%s", state.release.TagName, info.Asset.Name)
+		poolPath := fmt.Sprintf("pool/%s/%s", info.Tag, info.Asset.Name)
 
 		if len(info.Control) > 0 {
 			for _, f := range info.Control {

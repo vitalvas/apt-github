@@ -31,15 +31,23 @@ APT verifies signature via signed-by keyring
 3. The `Release` file is clearsigned to produce `InRelease`, which APT verifies using the local public key.
 4. On `apt install`, the `.deb` is downloaded directly from the GitHub release asset URL.
 
-## Setup
+## Installation
 
-Generate the GPG signing key (requires root):
+Download and install the latest `.deb` package from [GitHub Releases](https://github.com/vitalvas/apt-github/releases):
 
 ```bash
-sudo apt-github setup
+curl -fsSL -o /tmp/apt-github.deb \
+  "https://github.com/vitalvas/apt-github/releases/latest/download/apt-github_$(dpkg --print-architecture).deb"
+sudo dpkg -i /tmp/apt-github.deb
 ```
 
-This creates:
+The postinstall script automatically generates the GPG signing key. To regenerate it manually:
+
+```bash
+sudo /usr/lib/apt/methods/github setup
+```
+
+The signing key is stored at:
 - Private key in `/etc/apt-github/gpg/`
 - Public key at `/etc/apt/keyrings/apt-github.gpg`
 
@@ -61,12 +69,14 @@ sudo apt install PACKAGE_NAME
 
 ### Example
 
+Once installed, apt-github can manage its own updates:
+
 ```bash
-echo 'deb [signed-by=/etc/apt/keyrings/apt-github.gpg] github://vitalvas/systemd-supervisord stable main' \
-  | sudo tee /etc/apt/sources.list.d/systemd-supervisord.list
+echo 'deb [signed-by=/etc/apt/keyrings/apt-github.gpg] github://vitalvas/apt-github stable main' \
+  | sudo tee /etc/apt/sources.list.d/apt-github.list
 
 sudo apt update
-sudo apt install systemd-supervisord
+sudo apt install apt-github
 ```
 
 ### DEB822 Format
@@ -74,13 +84,33 @@ sudo apt install systemd-supervisord
 You can also use the modern DEB822 format (`.sources` files):
 
 ```bash
-cat <<EOF | sudo tee /etc/apt/sources.list.d/systemd-supervisord.sources
+cat <<EOF | sudo tee /etc/apt/sources.list.d/apt-github.sources
 Types: deb
-URIs: github://vitalvas/systemd-supervisord
+URIs: github://vitalvas/apt-github
 Suites: stable
 Components: main
 Signed-By: /etc/apt/keyrings/apt-github.gpg
 EOF
+```
+
+### Version History
+
+By default, the last 3 releases are available for version pinning. To change the limit, add the `versions` query parameter:
+
+```
+deb [signed-by=/etc/apt/keyrings/apt-github.gpg] github://OWNER/REPO?versions=20 stable main
+```
+
+> **Warning:** Each version requires downloading the `.deb` file to extract package metadata during `apt update` (results are cached on disk for subsequent runs). Higher version counts increase the initial `apt update` time and GitHub API usage. The unauthenticated GitHub API rate limit is 60 requests per hour.
+
+### Cache
+
+Release metadata and package control data are cached locally at `/var/cache/apt-github/` to minimize GitHub API calls and avoid rate limits. The release metadata cache has a 5-minute TTL; control metadata is cached indefinitely (keyed by URL and file size).
+
+To clear the cache:
+
+```bash
+sudo apt-github clean
 ```
 
 ## Requirements

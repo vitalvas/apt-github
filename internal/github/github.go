@@ -50,6 +50,7 @@ type DebInfo struct {
 	Name    string
 	Version string
 	Arch    string
+	Tag     string
 	Asset   Asset
 	SHA256  string
 	Control []ControlField
@@ -60,8 +61,8 @@ type ControlField struct {
 	Value string
 }
 
-func (c *Client) GetLatestRelease(owner, repo string) (*Release, error) {
-	url := fmt.Sprintf("%s/repos/%s/%s/releases/latest", c.BaseURL, owner, repo)
+func (c *Client) GetReleases(owner, repo string, limit int) ([]Release, error) {
+	url := fmt.Sprintf("%s/repos/%s/%s/releases?per_page=%d", c.BaseURL, owner, repo, limit)
 
 	resp, err := c.doGet(url)
 	if err != nil {
@@ -73,12 +74,12 @@ func (c *Client) GetLatestRelease(owner, repo string) (*Release, error) {
 		return nil, fmt.Errorf("GitHub API returned %d", resp.StatusCode)
 	}
 
-	var release Release
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+	var releases []Release
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
 		return nil, err
 	}
 
-	return &release, nil
+	return releases, nil
 }
 
 func (c *Client) FetchContent(url string) (string, error) {
@@ -298,6 +299,7 @@ func (r *Release) CollectDebInfo(checksums map[string]string) []DebInfo {
 			Name:    name,
 			Version: version,
 			Arch:    arch,
+			Tag:     r.TagName,
 			Asset:   asset,
 		}
 

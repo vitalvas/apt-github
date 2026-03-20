@@ -52,3 +52,19 @@ func TestSetupCmdExists(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "setup", setupCmd.Use)
 }
+
+func TestCleanSubcommand(t *testing.T) {
+	cmd := NewRootCmd()
+	cmd.SetArgs([]string{"clean"})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+}
+
+func TestCleanCmdExists(t *testing.T) {
+	cmd := NewRootCmd()
+
+	cleanCmd, _, err := cmd.Find([]string{"clean"})
+	require.NoError(t, err)
+	assert.Equal(t, "clean", cleanCmd.Use)
+}
