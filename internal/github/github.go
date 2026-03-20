@@ -90,6 +90,32 @@ func (c *Client) doGet(url string) (*http.Response, error) {
 	return c.HTTPClient.Do(req)
 }
 
+func (c *Client) downloadURL(asset Asset) string {
+	if c.Token != "" && asset.URL != "" {
+		return asset.URL
+	}
+
+	return asset.BrowserDownloadURL
+}
+
+func (c *Client) doGetAsset(asset Asset) (*http.Response, error) {
+	url := c.downloadURL(asset)
+
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("User-Agent", userAgent())
+
+	if c.Token != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.Token))
+		req.Header.Set("Accept", "application/octet-stream")
+	}
+
+	return c.HTTPClient.Do(req)
+}
+
 type Release struct {
 	TagName     string  `json:"tag_name"`
 	PublishedAt string  `json:"published_at"`
@@ -99,6 +125,7 @@ type Release struct {
 type Asset struct {
 	Name               string `json:"name"`
 	Size               int64  `json:"size"`
+	URL                string `json:"url"`
 	BrowserDownloadURL string `json:"browser_download_url"`
 }
 
@@ -138,8 +165,8 @@ func (c *Client) GetReleases(owner, repo string, limit int) ([]Release, error) {
 	return releases, nil
 }
 
-func (c *Client) FetchContent(url string) (string, error) {
-	resp, err := c.doGet(url)
+func (c *Client) FetchAssetContent(asset Asset) (string, error) {
+	resp, err := c.doGetAsset(asset)
 	if err != nil {
 		return "", err
 	}
@@ -157,8 +184,8 @@ func (c *Client) FetchContent(url string) (string, error) {
 	return string(body), nil
 }
 
-func (c *Client) FetchBytes(url string) ([]byte, error) {
-	resp, err := c.doGet(url)
+func (c *Client) FetchAssetBytes(asset Asset) ([]byte, error) {
+	resp, err := c.doGetAsset(asset)
 	if err != nil {
 		return nil, err
 	}
@@ -171,8 +198,8 @@ func (c *Client) FetchBytes(url string) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-func (c *Client) DownloadFile(url, destPath string) (int64, error) {
-	resp, err := c.doGet(url)
+func (c *Client) DownloadAssetFile(asset Asset, destPath string) (int64, error) {
+	resp, err := c.doGetAsset(asset)
 	if err != nil {
 		return 0, err
 	}

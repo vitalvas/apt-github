@@ -35,7 +35,7 @@ type Method struct {
 
 type repoState struct {
 	debInfos []github.DebInfo
-	assets   map[string]string // pool path -> download URL
+	assets   map[string]github.Asset // pool path -> asset
 	verified bool
 }
 
@@ -214,7 +214,7 @@ func (m *Method) loadRepo(parsed *parsedURI, out io.Writer) (*repoState, error) 
 
 	var allDebInfos []github.DebInfo
 
-	assets := make(map[string]string)
+	assets := make(map[string]github.Asset)
 
 	for ri := range releases {
 		release := &releases[ri]
@@ -222,7 +222,7 @@ func (m *Method) loadRepo(parsed *parsedURI, out io.Writer) (*repoState, error) 
 		checksums := make(map[string]string)
 
 		if csAsset := release.FindChecksumsAsset(); csAsset != nil {
-			content, err := m.client.FetchContent(csAsset.BrowserDownloadURL)
+			content, err := m.client.FetchAssetContent(*csAsset)
 			if err != nil {
 				m.logger.Printf("warning: failed to fetch checksums for %s: %s", release.TagName, err)
 			} else {
@@ -234,7 +234,7 @@ func (m *Method) loadRepo(parsed *parsedURI, out io.Writer) (*repoState, error) 
 
 		for i, info := range allDebInfo {
 			uriPath := fmt.Sprintf("pool/%s/%s", release.TagName, info.Asset.Name)
-			assets[uriPath] = info.Asset.BrowserDownloadURL
+			assets[uriPath] = info.Asset
 
 			if info.Arch != m.arch && info.Arch != "all" {
 				continue
@@ -300,7 +300,7 @@ func (m *Method) loadControlFields(info github.DebInfo, owner, repo, tag, filena
 		return entry.Fields, entry.SHA256
 	}
 
-	debData, err := m.client.FetchBytes(info.Asset.BrowserDownloadURL)
+	debData, err := m.client.FetchAssetBytes(info.Asset)
 	if err != nil {
 		m.logger.Printf("warning: failed to fetch package %s/%s %s: %s", owner, repo, filename, err)
 		return nil, ""
@@ -461,7 +461,7 @@ func (m *Method) handlePool(parsed *parsedURI, uri, filename string, out io.Writ
 		return sendFailure(out, uri, err.Error())
 	}
 
-	downloadURL, ok := state.assets[parsed.Path]
+	asset, ok := state.assets[parsed.Path]
 	if !ok {
 		return sendFailure(out, uri, "asset not found")
 	}
@@ -485,7 +485,7 @@ func (m *Method) handlePool(parsed *parsedURI, uri, filename string, out io.Writ
 		}
 	}
 
-	size, err := m.client.DownloadFile(downloadURL, filename)
+	size, err := m.client.DownloadAssetFile(asset, filename)
 	if err != nil {
 		return sendFailure(out, uri, fmt.Sprintf("download failed: %s", err))
 	}

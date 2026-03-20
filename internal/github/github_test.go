@@ -255,7 +255,7 @@ func TestClientGetReleasesError(t *testing.T) {
 	})
 }
 
-func TestClientFetchContent(t *testing.T) {
+func TestClientFetchAssetContent(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("sha256hash  file.deb\n"))
 	}))
@@ -266,12 +266,17 @@ func TestClientFetchContent(t *testing.T) {
 		BaseURL:    server.URL,
 	}
 
-	content, err := client.FetchContent(fmt.Sprintf("%s/checksums.txt", server.URL))
+	asset := Asset{
+		Name:               "checksums.txt",
+		BrowserDownloadURL: fmt.Sprintf("%s/checksums.txt", server.URL),
+	}
+
+	content, err := client.FetchAssetContent(asset)
 	require.NoError(t, err)
 	assert.Equal(t, "sha256hash  file.deb\n", content)
 }
 
-func TestClientFetchBytes(t *testing.T) {
+func TestClientFetchAssetBytes(t *testing.T) {
 	expectedContent := []byte("binary content here")
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -284,12 +289,17 @@ func TestClientFetchBytes(t *testing.T) {
 		BaseURL:    server.URL,
 	}
 
-	got, err := client.FetchBytes(fmt.Sprintf("%s/file.deb", server.URL))
+	asset := Asset{
+		Name:               "file.deb",
+		BrowserDownloadURL: fmt.Sprintf("%s/file.deb", server.URL),
+	}
+
+	got, err := client.FetchAssetBytes(asset)
 	require.NoError(t, err)
 	assert.Equal(t, expectedContent, got)
 }
 
-func TestClientDownloadFile(t *testing.T) {
+func TestClientDownloadAssetFile(t *testing.T) {
 	expectedContent := []byte("fake deb content")
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -302,15 +312,70 @@ func TestClientDownloadFile(t *testing.T) {
 		BaseURL:    server.URL,
 	}
 
+	asset := Asset{
+		Name:               "test.deb",
+		BrowserDownloadURL: fmt.Sprintf("%s/test.deb", server.URL),
+	}
+
 	destPath := filepath.Join(t.TempDir(), "test.deb")
 
-	n, err := client.DownloadFile(fmt.Sprintf("%s/test.deb", server.URL), destPath)
+	n, err := client.DownloadAssetFile(asset, destPath)
 	require.NoError(t, err)
 	assert.Equal(t, int64(len(expectedContent)), n)
 
 	got, err := os.ReadFile(destPath)
 	require.NoError(t, err)
 	assert.Equal(t, expectedContent, got)
+}
+
+func TestClientFetchAssetWithToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		assert.Equal(t, "application/octet-stream", r.Header.Get("Accept"))
+		assert.Equal(t, "/api-asset-url", r.URL.Path)
+		w.Write([]byte("authenticated content"))
+	}))
+	defer server.Close()
+
+	client := &Client{
+		HTTPClient: server.Client(),
+		BaseURL:    server.URL,
+		Token:      "test-token",
+	}
+
+	asset := Asset{
+		Name:               "file.deb",
+		URL:                fmt.Sprintf("%s/api-asset-url", server.URL),
+		BrowserDownloadURL: fmt.Sprintf("%s/browser-url", server.URL),
+	}
+
+	got, err := client.FetchAssetBytes(asset)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("authenticated content"), got)
+}
+
+func TestClientFetchAssetWithoutToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Empty(t, r.Header.Get("Authorization"))
+		assert.Equal(t, "/browser-url", r.URL.Path)
+		w.Write([]byte("public content"))
+	}))
+	defer server.Close()
+
+	client := &Client{
+		HTTPClient: server.Client(),
+		BaseURL:    server.URL,
+	}
+
+	asset := Asset{
+		Name:               "file.deb",
+		URL:                fmt.Sprintf("%s/api-asset-url", server.URL),
+		BrowserDownloadURL: fmt.Sprintf("%s/browser-url", server.URL),
+	}
+
+	got, err := client.FetchAssetBytes(asset)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("public content"), got)
 }
 
 func TestVerifyTagSignature(t *testing.T) {
