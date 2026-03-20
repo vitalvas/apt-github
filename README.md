@@ -150,13 +150,24 @@ echo "ghp_yourtoken" | sudo tee /etc/apt-transport-github/token
 sudo chmod 600 /etc/apt-transport-github/token
 ```
 
-A token with no scopes (public repo access only) is sufficient.
+A classic token with no scopes (public repo access only) is sufficient for public repositories.
+
+#### Fine-Grained Tokens
+
+For private repositories or to avoid rate limits, create a [fine-grained personal access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token) with the following repository permission:
+
+| Permission | Access | Used for |
+|---|---|---|
+| Contents | Read-only | Fetching releases, downloading assets, verifying tag signatures |
+| Metadata | Read-only | Accessing repository information (automatically included) |
+
+The token must be scoped to the repositories you want to install packages from.
 
 ## Requirements
 
 - `gpg` (runtime, for signing)
 - GitHub releases with `.deb` assets (goreleaser naming convention)
-- goreleaser's `checksums.txt` in the release assets
+- goreleaser's `checksums.txt` in the release assets (optional; SHA256 is computed from the `.deb` if missing)
 
 ### Supported `.deb` Naming Patterns
 
