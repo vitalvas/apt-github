@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/vitalvas/apt-github/compare/v0.5.0...v0.6.0) (2026-03-20)
+
+
+### Features
+
+* cache observability, arch filtering, and stale version cleanup ([65c59a5](https://github.com/vitalvas/apt-github/commit/65c59a5f294f54c5f3e065af3d1b8b8ae7ec7ab9))
+
 ## [0.5.0](https://github.com/vitalvas/apt-github/compare/v0.4.0...v0.5.0) (2026-03-20)
 
 
