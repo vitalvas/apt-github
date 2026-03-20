@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/vitalvas/apt-github/compare/v0.3.0...v0.4.0) (2026-03-20)
+
+
+### Features
+
+* add GitHub PAT support, dynamic version, and fix empty control fields ([3cc568f](https://github.com/vitalvas/apt-github/commit/3cc568fdf0b9f6a05a7ccc4afd0b7e4f0db2ee3f))
+
 ## [0.3.0](https://github.com/vitalvas/apt-github/compare/v0.2.0...v0.3.0) (2026-03-20)
 
 
