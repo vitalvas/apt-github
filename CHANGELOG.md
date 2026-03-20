@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/vitalvas/apt-github/compare/v0.4.0...v0.5.0) (2026-03-20)
+
+
+### Features
+
+* cache downloaded .deb packages to avoid re-downloading on install ([d605bde](https://github.com/vitalvas/apt-github/commit/d605bde59dd1e4da9fcbd87d806fc0a07de76c01))
+
 ## [0.4.0](https://github.com/vitalvas/apt-github/compare/v0.3.0...v0.4.0) (2026-03-20)
 
 
