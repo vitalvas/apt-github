@@ -150,35 +150,102 @@ func TestReleaseFindChecksumsAsset(t *testing.T) {
 }
 
 func TestReleaseCollectDebInfo(t *testing.T) {
-	release := &Release{
-		TagName: "v1.2.3",
-		Assets: []Asset{
-			{Name: "myapp_1.2.3_linux_amd64.deb", Size: 1000, BrowserDownloadURL: "https://example.com/amd64.deb"},
-			{Name: "myapp_1.2.3_linux_arm64.deb", Size: 900, BrowserDownloadURL: "https://example.com/arm64.deb"},
-			{Name: "myapp_1.2.3_checksums.txt", Size: 100},
-			{Name: "myapp_1.2.3_linux_amd64.tar.gz", Size: 800},
-		},
-	}
+	t.Run("checksums from file", func(t *testing.T) {
+		release := &Release{
+			TagName: "v1.2.3",
+			Assets: []Asset{
+				{Name: "myapp_1.2.3_linux_amd64.deb", Size: 1000, Digest: "sha256:digestamd64"},
+				{Name: "myapp_1.2.3_linux_arm64.deb", Size: 900, Digest: "sha256:digestarm64"},
+				{Name: "myapp_1.2.3_checksums.txt", Size: 100},
+				{Name: "myapp_1.2.3_linux_amd64.tar.gz", Size: 800},
+			},
+		}
 
-	checksums := map[string]string{
-		"myapp_1.2.3_linux_amd64.deb": "sha256amd64",
-		"myapp_1.2.3_linux_arm64.deb": "sha256arm64",
-	}
+		checksums := map[string]string{
+			"myapp_1.2.3_linux_amd64.deb": "sha256amd64",
+			"myapp_1.2.3_linux_arm64.deb": "sha256arm64",
+		}
 
-	infos := release.CollectDebInfo(checksums)
+		infos := release.CollectDebInfo(checksums)
 
-	require.Len(t, infos, 2)
+		require.Len(t, infos, 2)
+		assert.Equal(t, "sha256amd64", infos[0].SHA256)
+		assert.Equal(t, "sha256arm64", infos[1].SHA256)
+	})
 
-	assert.Equal(t, "myapp", infos[0].Name)
-	assert.Equal(t, "1.2.3", infos[0].Version)
-	assert.Equal(t, "amd64", infos[0].Arch)
-	assert.Equal(t, "v1.2.3", infos[0].Tag)
-	assert.Equal(t, "sha256amd64", infos[0].SHA256)
+	t.Run("fallback to api digest", func(t *testing.T) {
+		release := &Release{
+			TagName: "v1.2.3",
+			Assets: []Asset{
+				{Name: "myapp_1.2.3_linux_amd64.deb", Size: 1000, Digest: "sha256:abcdef123456"},
+				{Name: "myapp_1.2.3_linux_arm64.deb", Size: 900, Digest: "sha256:789012fedcba"},
+			},
+		}
 
-	assert.Equal(t, "myapp", infos[1].Name)
-	assert.Equal(t, "arm64", infos[1].Arch)
-	assert.Equal(t, "v1.2.3", infos[1].Tag)
-	assert.Equal(t, "sha256arm64", infos[1].SHA256)
+		infos := release.CollectDebInfo(nil)
+
+		require.Len(t, infos, 2)
+		assert.Equal(t, "abcdef123456", infos[0].SHA256)
+		assert.Equal(t, "789012fedcba", infos[1].SHA256)
+	})
+
+	t.Run("ignore non-sha256 digest", func(t *testing.T) {
+		release := &Release{
+			TagName: "v1.2.3",
+			Assets: []Asset{
+				{Name: "myapp_1.2.3_linux_amd64.deb", Size: 1000, Digest: "md5:abcdef"},
+			},
+		}
+
+		infos := release.CollectDebInfo(nil)
+
+		require.Len(t, infos, 1)
+		assert.Empty(t, infos[0].SHA256)
+	})
+
+	t.Run("no digest", func(t *testing.T) {
+		release := &Release{
+			TagName: "v1.2.3",
+			Assets: []Asset{
+				{Name: "myapp_1.2.3_linux_amd64.deb", Size: 1000},
+			},
+		}
+
+		infos := release.CollectDebInfo(nil)
+
+		require.Len(t, infos, 1)
+		assert.Empty(t, infos[0].SHA256)
+	})
+
+	t.Run("metadata fields", func(t *testing.T) {
+		release := &Release{
+			TagName: "v1.2.3",
+			Assets: []Asset{
+				{Name: "myapp_1.2.3_linux_amd64.deb", Size: 1000, BrowserDownloadURL: "https://example.com/amd64.deb"},
+				{Name: "myapp_1.2.3_linux_arm64.deb", Size: 900, BrowserDownloadURL: "https://example.com/arm64.deb"},
+				{Name: "myapp_1.2.3_checksums.txt", Size: 100},
+				{Name: "myapp_1.2.3_linux_amd64.tar.gz", Size: 800},
+			},
+		}
+
+		checksums := map[string]string{
+			"myapp_1.2.3_linux_amd64.deb": "sha256amd64",
+			"myapp_1.2.3_linux_arm64.deb": "sha256arm64",
+		}
+
+		infos := release.CollectDebInfo(checksums)
+
+		require.Len(t, infos, 2)
+
+		assert.Equal(t, "myapp", infos[0].Name)
+		assert.Equal(t, "1.2.3", infos[0].Version)
+		assert.Equal(t, "amd64", infos[0].Arch)
+		assert.Equal(t, "v1.2.3", infos[0].Tag)
+
+		assert.Equal(t, "myapp", infos[1].Name)
+		assert.Equal(t, "arm64", infos[1].Arch)
+		assert.Equal(t, "v1.2.3", infos[1].Tag)
+	})
 }
 
 func TestClientGetReleases(t *testing.T) {

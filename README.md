@@ -27,7 +27,7 @@ APT verifies signature via signed-by keyring
 ```
 
 1. On `apt update`, the transport fetches the latest GitHub release and verifies the tag signature via the GitHub API.
-2. It parses `.deb` assets and goreleaser's `checksums.txt` to generate APT-compatible `Packages` and `Release` index files.
+2. It parses `.deb` assets, resolves SHA256 hashes, and generates APT-compatible `Packages` and `Release` index files.
 3. The `Release` file is clearsigned to produce `InRelease`, which APT verifies using the local public key.
 4. On `apt install`, the `.deb` is downloaded directly from the GitHub release asset URL.
 
@@ -167,7 +167,15 @@ The token must be scoped to the repositories you want to install packages from.
 
 - `gpg` (runtime, for signing)
 - GitHub releases with `.deb` assets (goreleaser naming convention)
-- goreleaser's `checksums.txt` in the release assets (optional; SHA256 is computed from the `.deb` if missing)
+- goreleaser's `checksums.txt` in the release assets (optional; see hash resolution below)
+
+### Hash Resolution
+
+SHA256 hashes for `.deb` packages are resolved in the following order:
+
+1. **checksums.txt** from the release assets (goreleaser default)
+2. **GitHub API `digest`** field from asset metadata
+3. **Local computation** from the downloaded `.deb` file
 
 ### Supported `.deb` Naming Patterns
 

@@ -127,6 +127,7 @@ type Asset struct {
 	Size               int64  `json:"size"`
 	URL                string `json:"url"`
 	BrowserDownloadURL string `json:"browser_download_url"`
+	Digest             string `json:"digest"`
 }
 
 type DebInfo struct {
@@ -388,6 +389,8 @@ func (r *Release) CollectDebInfo(checksums map[string]string) []DebInfo {
 
 		if sha, ok := checksums[asset.Name]; ok {
 			info.SHA256 = sha
+		} else if strings.HasPrefix(asset.Digest, "sha256:") {
+			info.SHA256 = strings.TrimPrefix(asset.Digest, "sha256:")
 		}
 
 		result = append(result, info)
