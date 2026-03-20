@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/vitalvas/apt-transport-github/compare/v0.9.0...v0.10.0) (2026-03-20)
+
+
+### Features
+
+* use GitHub API digest field as SHA256 fallback ([b00827d](https://github.com/vitalvas/apt-transport-github/commit/b00827dcc1579a787189e10924458e35bcb9e408))
+
 ## [0.9.0](https://github.com/vitalvas/apt-transport-github/compare/v0.8.0...v0.9.0) (2026-03-20)
 
 
