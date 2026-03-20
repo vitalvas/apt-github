@@ -1,0 +1,453 @@
+package method
+
+import (
+	"bufio"
+	"bytes"
+	"compress/gzip"
+	"crypto/md5"
+	"crypto/sha256"
+	"fmt"
+	"io"
+	"os"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/vitalvas/apt-github/internal/github"
+	"github.com/vitalvas/apt-github/internal/signing"
+)
+
+type Method struct {
+	client *github.Client
+	signer signing.Signer
+	cache  map[string]*repoState
+}
+
+type repoState struct {
+	release  *github.Release
+	debInfos []github.DebInfo
+	assets   map[string]string // pool path -> download URL
+	verified bool
+}
+
+func New() *Method {
+	return &Method{
+		client: github.NewClient(),
+		cache:  make(map[string]*repoState),
+	}
+}
+
+func NewWithSigner(signer signing.Signer) *Method {
+	m := New()
+	m.signer = signer
+
+	return m
+}
+
+func (m *Method) Run(in io.Reader, out io.Writer) error {
+	caps := &Message{Code: 100, Text: "Capabilities"}
+	caps.Set("Version", "1.2")
+	caps.Set("Single-Instance", "true")
+	caps.Set("Send-Config", "true")
+
+	if err := caps.Write(out); err != nil {
+		return err
+	}
+
+	reader := bufio.NewReader(in)
+
+	for {
+		msg, err := ReadMessage(reader)
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+
+			return err
+		}
+
+		if msg.Code == 600 {
+			if err := m.handleAcquire(msg, out); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+type parsedURI struct {
+	Owner string
+	Repo  string
+	Path  string
+}
+
+func parseURI(uri string) (*parsedURI, error) {
+	trimmed := strings.TrimPrefix(uri, "github://")
+
+	parts := strings.SplitN(trimmed, "/", 3)
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("invalid URI: %s", uri)
+	}
+
+	p := &parsedURI{
+		Owner: parts[0],
+		Repo:  parts[1],
+	}
+
+	if len(parts) == 3 {
+		p.Path = parts[2]
+	}
+
+	return p, nil
+}
+
+func (m *Method) handleAcquire(msg *Message, out io.Writer) error {
+	uri := msg.Get("URI")
+	filename := msg.Get("Filename")
+
+	parsed, err := parseURI(uri)
+	if err != nil {
+		return sendFailure(out, uri, err.Error())
+	}
+
+	switch {
+	case strings.HasSuffix(parsed.Path, "InRelease"):
+		return m.handleInRelease(parsed, uri, filename, out)
+
+	case strings.HasSuffix(parsed.Path, "Release.gpg"):
+		return sendFailure(out, uri, "Release.gpg not available, use InRelease")
+
+	case strings.HasSuffix(parsed.Path, "/Release"):
+		return m.handleRelease(parsed, uri, filename, out)
+
+	case strings.HasSuffix(parsed.Path, "/Packages.gz"):
+		return m.handlePackages(parsed, uri, filename, out, true)
+
+	case strings.HasSuffix(parsed.Path, "/Packages"):
+		return m.handlePackages(parsed, uri, filename, out, false)
+
+	case strings.HasPrefix(parsed.Path, "pool/"):
+		return m.handlePool(parsed, uri, filename, out)
+
+	default:
+		return sendFailure(out, uri, "unknown request path")
+	}
+}
+
+func (m *Method) loadRepo(parsed *parsedURI, out io.Writer) (*repoState, error) {
+	key := fmt.Sprintf("%s/%s", parsed.Owner, parsed.Repo)
+
+	if state, ok := m.cache[key]; ok {
+		return state, nil
+	}
+
+	status := &Message{Code: 102, Text: "Status"}
+	status.Set("URI", fmt.Sprintf("github://%s", key))
+	status.Set("Message", "Fetching release info from GitHub")
+
+	if err := status.Write(out); err != nil {
+		return nil, err
+	}
+
+	release, err := m.client.GetLatestRelease(parsed.Owner, parsed.Repo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest release: %w", err)
+	}
+
+	verified, err := m.client.VerifyTagSignature(parsed.Owner, parsed.Repo, release.TagName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify tag signature: %w", err)
+	}
+
+	checksums := make(map[string]string)
+
+	if csAsset := release.FindChecksumsAsset(); csAsset != nil {
+		content, err := m.client.FetchContent(csAsset.BrowserDownloadURL)
+		if err == nil {
+			checksums = github.ParseChecksums(content)
+		}
+	}
+
+	debInfos := release.CollectDebInfo(checksums)
+
+	assets := make(map[string]string)
+	for _, info := range debInfos {
+		poolPath := fmt.Sprintf("pool/%s/%s", release.TagName, info.Asset.Name)
+		assets[poolPath] = info.Asset.BrowserDownloadURL
+	}
+
+	state := &repoState{
+		release:  release,
+		debInfos: debInfos,
+		assets:   assets,
+		verified: verified,
+	}
+
+	m.cache[key] = state
+
+	return state, nil
+}
+
+func (m *Method) handleInRelease(parsed *parsedURI, uri, filename string, out io.Writer) error {
+	if m.signer == nil {
+		return sendFailure(out, uri, "signing not configured, run: apt-github setup")
+	}
+
+	state, err := m.loadRepo(parsed, out)
+	if err != nil {
+		return sendFailure(out, uri, err.Error())
+	}
+
+	if !state.verified {
+		return sendFailure(out, uri, "GitHub tag signature verification failed")
+	}
+
+	releaseContent := m.generateReleaseContent(parsed, state)
+
+	signed, err := m.signer.ClearSign(releaseContent)
+	if err != nil {
+		return sendFailure(out, uri, fmt.Sprintf("signing failed: %s", err))
+	}
+
+	return writeFileAndRespond(out, uri, filename, signed)
+}
+
+func (m *Method) handleRelease(parsed *parsedURI, uri, filename string, out io.Writer) error {
+	state, err := m.loadRepo(parsed, out)
+	if err != nil {
+		return sendFailure(out, uri, err.Error())
+	}
+
+	content := m.generateReleaseContent(parsed, state)
+
+	return writeFileAndRespond(out, uri, filename, content)
+}
+
+func (m *Method) generateReleaseContent(parsed *parsedURI, state *repoState) []byte {
+	archSet := make(map[string]struct{})
+	for _, info := range state.debInfos {
+		archSet[info.Arch] = struct{}{}
+	}
+
+	archs := make([]string, 0, len(archSet))
+	for arch := range archSet {
+		archs = append(archs, arch)
+	}
+
+	sort.Strings(archs)
+
+	type indexEntry struct {
+		path    string
+		content []byte
+	}
+
+	entries := make([]indexEntry, 0, 2*len(archs))
+
+	for _, arch := range archs {
+		pkgContent := m.generatePackagesContent(state, arch)
+		pkgPath := fmt.Sprintf("main/binary-%s/Packages", arch)
+		entries = append(entries, indexEntry{path: pkgPath, content: pkgContent})
+
+		var gzBuf bytes.Buffer
+		gz := gzip.NewWriter(&gzBuf)
+		gz.Write(pkgContent)
+		gz.Close()
+
+		gzPath := fmt.Sprintf("main/binary-%s/Packages.gz", arch)
+		entries = append(entries, indexEntry{path: gzPath, content: gzBuf.Bytes()})
+	}
+
+	var buf bytes.Buffer
+
+	fmt.Fprintf(&buf, "Origin: github\n")
+	fmt.Fprintf(&buf, "Label: %s/%s\n", parsed.Owner, parsed.Repo)
+	fmt.Fprintf(&buf, "Suite: stable\n")
+	fmt.Fprintf(&buf, "Codename: stable\n")
+	fmt.Fprintf(&buf, "Architectures: %s\n", strings.Join(archs, " "))
+	fmt.Fprintf(&buf, "Components: main\n")
+	fmt.Fprintf(&buf, "Date: %s\n", time.Now().UTC().Format(time.RFC1123))
+
+	fmt.Fprintf(&buf, "MD5Sum:\n")
+	for _, e := range entries {
+		hash := md5.Sum(e.content)
+		fmt.Fprintf(&buf, " %x %d %s\n", hash, len(e.content), e.path)
+	}
+
+	fmt.Fprintf(&buf, "SHA256:\n")
+	for _, e := range entries {
+		hash := sha256.Sum256(e.content)
+		fmt.Fprintf(&buf, " %x %d %s\n", hash, len(e.content), e.path)
+	}
+
+	return buf.Bytes()
+}
+
+func (m *Method) handlePackages(parsed *parsedURI, uri, filename string, out io.Writer, compressed bool) error {
+	state, err := m.loadRepo(parsed, out)
+	if err != nil {
+		return sendFailure(out, uri, err.Error())
+	}
+
+	arch := extractArch(parsed.Path)
+	if arch == "" {
+		return sendFailure(out, uri, "cannot determine architecture from path")
+	}
+
+	content := m.generatePackagesContent(state, arch)
+
+	if compressed {
+		var gzBuf bytes.Buffer
+		gz := gzip.NewWriter(&gzBuf)
+
+		if _, err := gz.Write(content); err != nil {
+			return sendFailure(out, uri, err.Error())
+		}
+
+		if err := gz.Close(); err != nil {
+			return sendFailure(out, uri, err.Error())
+		}
+
+		content = gzBuf.Bytes()
+	}
+
+	return writeFileAndRespond(out, uri, filename, content)
+}
+
+func (m *Method) handlePool(parsed *parsedURI, uri, filename string, out io.Writer) error {
+	state, err := m.loadRepo(parsed, out)
+	if err != nil {
+		return sendFailure(out, uri, err.Error())
+	}
+
+	downloadURL, ok := state.assets[parsed.Path]
+	if !ok {
+		return sendFailure(out, uri, "asset not found")
+	}
+
+	status := &Message{Code: 200, Text: "URI Start"}
+	status.Set("URI", uri)
+
+	if err := status.Write(out); err != nil {
+		return err
+	}
+
+	size, err := m.client.DownloadFile(downloadURL, filename)
+	if err != nil {
+		return sendFailure(out, uri, fmt.Sprintf("download failed: %s", err))
+	}
+
+	hashes, err := hashFile(filename)
+	if err != nil {
+		return sendFailure(out, uri, fmt.Sprintf("hash failed: %s", err))
+	}
+
+	done := &Message{Code: 201, Text: "URI Done"}
+	done.Set("URI", uri)
+	done.Set("Filename", filename)
+	done.Set("Size", fmt.Sprintf("%d", size))
+	done.Set("MD5-Hash", hashes.md5)
+	done.Set("SHA256-Hash", hashes.sha256)
+
+	return done.Write(out)
+}
+
+func (m *Method) generatePackagesContent(state *repoState, arch string) []byte {
+	var buf bytes.Buffer
+	first := true
+
+	for _, info := range state.debInfos {
+		if info.Arch != arch {
+			continue
+		}
+
+		if !first {
+			buf.WriteString("\n")
+		}
+
+		first = false
+
+		poolPath := fmt.Sprintf("pool/%s/%s", state.release.TagName, info.Asset.Name)
+
+		fmt.Fprintf(&buf, "Package: %s\n", info.Name)
+		fmt.Fprintf(&buf, "Version: %s\n", info.Version)
+		fmt.Fprintf(&buf, "Architecture: %s\n", info.Arch)
+		fmt.Fprintf(&buf, "Maintainer: GitHub Release\n")
+		fmt.Fprintf(&buf, "Description: %s installed from GitHub\n", info.Name)
+		fmt.Fprintf(&buf, "Filename: %s\n", poolPath)
+		fmt.Fprintf(&buf, "Size: %d\n", info.Asset.Size)
+
+		if info.SHA256 != "" {
+			fmt.Fprintf(&buf, "SHA256: %s\n", info.SHA256)
+		}
+	}
+
+	return buf.Bytes()
+}
+
+func extractArch(path string) string {
+	const prefix = "binary-"
+
+	idx := strings.Index(path, prefix)
+	if idx < 0 {
+		return ""
+	}
+
+	rest := path[idx+len(prefix):]
+
+	if slashIdx := strings.Index(rest, "/"); slashIdx >= 0 {
+		return rest[:slashIdx]
+	}
+
+	return rest
+}
+
+type fileHashes struct {
+	md5    string
+	sha256 string
+}
+
+func hashFile(path string) (*fileHashes, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	md5Hash := md5.New()
+	sha256Hash := sha256.New()
+	w := io.MultiWriter(md5Hash, sha256Hash)
+
+	if _, err := io.Copy(w, f); err != nil {
+		return nil, err
+	}
+
+	return &fileHashes{
+		md5:    fmt.Sprintf("%x", md5Hash.Sum(nil)),
+		sha256: fmt.Sprintf("%x", sha256Hash.Sum(nil)),
+	}, nil
+}
+
+func writeFileAndRespond(out io.Writer, uri, filename string, content []byte) error {
+	if err := os.WriteFile(filename, content, 0644); err != nil {
+		return sendFailure(out, uri, fmt.Sprintf("write failed: %s", err))
+	}
+
+	md5Hash := md5.Sum(content)
+	sha256Hash := sha256.Sum256(content)
+
+	done := &Message{Code: 201, Text: "URI Done"}
+	done.Set("URI", uri)
+	done.Set("Filename", filename)
+	done.Set("Size", fmt.Sprintf("%d", len(content)))
+	done.Set("MD5-Hash", fmt.Sprintf("%x", md5Hash))
+	done.Set("SHA256-Hash", fmt.Sprintf("%x", sha256Hash))
+
+	return done.Write(out)
+}
+
+func sendFailure(out io.Writer, uri, message string) error {
+	msg := &Message{Code: 400, Text: "URI Failure"}
+	msg.Set("URI", uri)
+	msg.Set("Message", message)
+
+	return msg.Write(out)
+}
