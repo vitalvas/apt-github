@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/vitalvas/apt-transport-github/compare/v0.11.0...v0.11.1) (2026-03-24)
+
+
+### Bug Fixes
+
+* add Last-Modified header to URI Done response ([053e8ef](https://github.com/vitalvas/apt-transport-github/commit/053e8ef5aea494b80959c838d46f0ab5f41063d0))
+
 ## [0.11.0](https://github.com/vitalvas/apt-transport-github/compare/v0.10.0...v0.11.0) (2026-03-24)
 
 
