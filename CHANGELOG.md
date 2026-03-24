@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.2](https://github.com/vitalvas/apt-transport-github/compare/v0.11.1...v0.11.2) (2026-03-24)
+
+
+### Bug Fixes
+
+* send URI Start before URI Done for index file responses ([92a5b0c](https://github.com/vitalvas/apt-transport-github/commit/92a5b0cabcdca60ef8b5b44b0512660736d7b351))
+
 ## [0.11.1](https://github.com/vitalvas/apt-transport-github/compare/v0.11.0...v0.11.1) (2026-03-24)
 
 
