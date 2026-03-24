@@ -37,6 +37,10 @@ nfpms:
       - src: misc/apt-transport-github.sources
         dst: /etc/apt/sources.list.d/apt-transport-github.sources
         type: config
+      - dst: /etc/apt-transport-github/tokens
+        type: dir
+        file_info:
+          mode: 0700
     scripts:
       postinstall: misc/postinstall.sh
 checksum:

@@ -6,11 +6,12 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 var (
-	tokenFile  = "/etc/apt-transport-github/token"
+	tokensDir  = "/etc/apt-transport-github/tokens"
 	appVersion = "dev"
 )
 
@@ -25,28 +26,40 @@ func userAgent() string {
 type Client struct {
 	HTTPClient *http.Client
 	BaseURL    string
-	Token      string
+	TokensDir  string
 }
 
 func NewClient() *Client {
 	return &Client{
 		HTTPClient: http.DefaultClient,
 		BaseURL:    "https://api.github.com",
-		Token:      loadToken(),
+		TokensDir:  tokensDir,
 	}
 }
 
-func loadToken() string {
+func (c *Client) resolveToken(owner, repo string) string {
+	paths := []string{
+		filepath.Join(c.TokensDir, fmt.Sprintf("repo_%s__%s", owner, repo)),
+		filepath.Join(c.TokensDir, fmt.Sprintf("repo_%s", owner)),
+		filepath.Join(c.TokensDir, "default"),
+	}
+
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+
+		if token := strings.TrimSpace(string(data)); token != "" {
+			return token
+		}
+	}
+
 	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
 		return token
 	}
 
-	data, err := os.ReadFile(tokenFile)
-	if err != nil {
-		return ""
-	}
-
-	return strings.TrimSpace(string(data))
+	return ""
 }
 
 func apiErrorMessage(resp *http.Response) string {
@@ -75,7 +88,7 @@ func apiErrorMessage(resp *http.Response) string {
 	return fmt.Sprintf("HTTP %d", resp.StatusCode)
 }
 
-func (c *Client) doGet(url string) (*http.Response, error) {
+func (c *Client) doGet(owner, repo, url string) (*http.Response, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -83,23 +96,20 @@ func (c *Client) doGet(url string) (*http.Response, error) {
 
 	req.Header.Set("User-Agent", userAgent())
 
-	if c.Token != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.Token))
+	if token := c.resolveToken(owner, repo); token != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	}
 
 	return c.HTTPClient.Do(req)
 }
 
-func (c *Client) downloadURL(asset Asset) string {
-	if c.Token != "" && asset.URL != "" {
-		return asset.URL
+func (c *Client) doGetAsset(owner, repo string, asset Asset) (*http.Response, error) {
+	token := c.resolveToken(owner, repo)
+
+	url := asset.BrowserDownloadURL
+	if token != "" && asset.URL != "" {
+		url = asset.URL
 	}
-
-	return asset.BrowserDownloadURL
-}
-
-func (c *Client) doGetAsset(asset Asset) (*http.Response, error) {
-	url := c.downloadURL(asset)
 
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -108,8 +118,8 @@ func (c *Client) doGetAsset(asset Asset) (*http.Response, error) {
 
 	req.Header.Set("User-Agent", userAgent())
 
-	if c.Token != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.Token))
+	if token != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 		req.Header.Set("Accept", "application/octet-stream")
 	}
 
@@ -148,7 +158,7 @@ type ControlField struct {
 func (c *Client) GetReleases(owner, repo string, limit int) ([]Release, error) {
 	url := fmt.Sprintf("%s/repos/%s/%s/releases?per_page=%d", c.BaseURL, owner, repo, limit)
 
-	resp, err := c.doGet(url)
+	resp, err := c.doGet(owner, repo, url)
 	if err != nil {
 		return nil, err
 	}
@@ -166,8 +176,8 @@ func (c *Client) GetReleases(owner, repo string, limit int) ([]Release, error) {
 	return releases, nil
 }
 
-func (c *Client) FetchAssetContent(asset Asset) (string, error) {
-	resp, err := c.doGetAsset(asset)
+func (c *Client) FetchAssetContent(owner, repo string, asset Asset) (string, error) {
+	resp, err := c.doGetAsset(owner, repo, asset)
 	if err != nil {
 		return "", err
 	}
@@ -185,8 +195,8 @@ func (c *Client) FetchAssetContent(asset Asset) (string, error) {
 	return string(body), nil
 }
 
-func (c *Client) FetchAssetBytes(asset Asset) ([]byte, error) {
-	resp, err := c.doGetAsset(asset)
+func (c *Client) FetchAssetBytes(owner, repo string, asset Asset) ([]byte, error) {
+	resp, err := c.doGetAsset(owner, repo, asset)
 	if err != nil {
 		return nil, err
 	}
@@ -199,8 +209,8 @@ func (c *Client) FetchAssetBytes(asset Asset) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-func (c *Client) DownloadAssetFile(asset Asset, destPath string) (int64, error) {
-	resp, err := c.doGetAsset(asset)
+func (c *Client) DownloadAssetFile(owner, repo string, asset Asset, destPath string) (int64, error) {
+	resp, err := c.doGetAsset(owner, repo, asset)
 	if err != nil {
 		return 0, err
 	}
@@ -297,7 +307,7 @@ type GitCommit struct {
 func (c *Client) VerifyTagSignature(owner, repo, tagName string) (bool, error) {
 	refURL := fmt.Sprintf("%s/repos/%s/%s/git/ref/tags/%s", c.BaseURL, owner, repo, tagName)
 
-	resp, err := c.doGet(refURL)
+	resp, err := c.doGet(owner, repo, refURL)
 	if err != nil {
 		return false, fmt.Errorf("failed to get tag ref: %w", err)
 	}
@@ -325,7 +335,7 @@ func (c *Client) VerifyTagSignature(owner, repo, tagName string) (bool, error) {
 func (c *Client) verifyAnnotatedTag(owner, repo, sha string) (bool, error) {
 	tagURL := fmt.Sprintf("%s/repos/%s/%s/git/tags/%s", c.BaseURL, owner, repo, sha)
 
-	resp, err := c.doGet(tagURL)
+	resp, err := c.doGet(owner, repo, tagURL)
 	if err != nil {
 		return false, fmt.Errorf("failed to get tag object: %w", err)
 	}
@@ -346,7 +356,7 @@ func (c *Client) verifyAnnotatedTag(owner, repo, sha string) (bool, error) {
 func (c *Client) verifyCommit(owner, repo, sha string) (bool, error) {
 	commitURL := fmt.Sprintf("%s/repos/%s/%s/git/commits/%s", c.BaseURL, owner, repo, sha)
 
-	resp, err := c.doGet(commitURL)
+	resp, err := c.doGet(owner, repo, commitURL)
 	if err != nil {
 		return false, fmt.Errorf("failed to get commit object: %w", err)
 	}

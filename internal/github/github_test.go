@@ -338,7 +338,7 @@ func TestClientFetchAssetContent(t *testing.T) {
 		BrowserDownloadURL: fmt.Sprintf("%s/checksums.txt", server.URL),
 	}
 
-	content, err := client.FetchAssetContent(asset)
+	content, err := client.FetchAssetContent("owner", "repo", asset)
 	require.NoError(t, err)
 	assert.Equal(t, "sha256hash  file.deb\n", content)
 }
@@ -361,7 +361,7 @@ func TestClientFetchAssetBytes(t *testing.T) {
 		BrowserDownloadURL: fmt.Sprintf("%s/file.deb", server.URL),
 	}
 
-	got, err := client.FetchAssetBytes(asset)
+	got, err := client.FetchAssetBytes("owner", "repo", asset)
 	require.NoError(t, err)
 	assert.Equal(t, expectedContent, got)
 }
@@ -386,7 +386,7 @@ func TestClientDownloadAssetFile(t *testing.T) {
 
 	destPath := filepath.Join(t.TempDir(), "test.deb")
 
-	n, err := client.DownloadAssetFile(asset, destPath)
+	n, err := client.DownloadAssetFile("owner", "repo", asset, destPath)
 	require.NoError(t, err)
 	assert.Equal(t, int64(len(expectedContent)), n)
 
@@ -404,10 +404,13 @@ func TestClientFetchAssetWithToken(t *testing.T) {
 	}))
 	defer server.Close()
 
+	tokenDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tokenDir, "default"), []byte("test-token"), 0600))
+
 	client := &Client{
 		HTTPClient: server.Client(),
 		BaseURL:    server.URL,
-		Token:      "test-token",
+		TokensDir:  tokenDir,
 	}
 
 	asset := Asset{
@@ -416,7 +419,7 @@ func TestClientFetchAssetWithToken(t *testing.T) {
 		BrowserDownloadURL: fmt.Sprintf("%s/browser-url", server.URL),
 	}
 
-	got, err := client.FetchAssetBytes(asset)
+	got, err := client.FetchAssetBytes("owner", "repo", asset)
 	require.NoError(t, err)
 	assert.Equal(t, []byte("authenticated content"), got)
 }
@@ -432,6 +435,7 @@ func TestClientFetchAssetWithoutToken(t *testing.T) {
 	client := &Client{
 		HTTPClient: server.Client(),
 		BaseURL:    server.URL,
+		TokensDir:  t.TempDir(),
 	}
 
 	asset := Asset{
@@ -440,7 +444,7 @@ func TestClientFetchAssetWithoutToken(t *testing.T) {
 		BrowserDownloadURL: fmt.Sprintf("%s/browser-url", server.URL),
 	}
 
-	got, err := client.FetchAssetBytes(asset)
+	got, err := client.FetchAssetBytes("owner", "repo", asset)
 	require.NoError(t, err)
 	assert.Equal(t, []byte("public content"), got)
 }
@@ -548,10 +552,13 @@ func TestAuthTokenHeader(t *testing.T) {
 	}))
 	defer server.Close()
 
+	tokenDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tokenDir, "default"), []byte("ghp_testtoken123"), 0600))
+
 	client := &Client{
 		HTTPClient: server.Client(),
 		BaseURL:    server.URL,
-		Token:      "ghp_testtoken123",
+		TokensDir:  tokenDir,
 	}
 
 	_, err := client.GetReleases("owner", "repo", 30)
@@ -569,44 +576,70 @@ func TestNoAuthHeaderWithoutToken(t *testing.T) {
 	client := &Client{
 		HTTPClient: server.Client(),
 		BaseURL:    server.URL,
+		TokensDir:  t.TempDir(),
 	}
 
 	_, err := client.GetReleases("owner", "repo", 30)
 	require.NoError(t, err)
 }
 
-func TestLoadTokenFromEnv(t *testing.T) {
-	t.Setenv("GITHUB_TOKEN", "ghp_envtoken")
+func TestResolveToken(t *testing.T) {
+	t.Run("repo token", func(t *testing.T) {
+		t.Setenv("GITHUB_TOKEN", "")
 
-	token := loadToken()
-	assert.Equal(t, "ghp_envtoken", token)
-}
+		tokenDir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(tokenDir, "default"), []byte("default-token"), 0600))
+		require.NoError(t, os.WriteFile(filepath.Join(tokenDir, "repo_vitalvas"), []byte("owner-token"), 0600))
+		require.NoError(t, os.WriteFile(filepath.Join(tokenDir, "repo_vitalvas__myapp"), []byte("repo-token"), 0600))
 
-func TestLoadTokenFromFile(t *testing.T) {
-	t.Setenv("GITHUB_TOKEN", "")
+		client := &Client{TokensDir: tokenDir}
+		assert.Equal(t, "repo-token", client.resolveToken("vitalvas", "myapp"))
+	})
 
-	tmpFile := filepath.Join(t.TempDir(), "token")
-	require.NoError(t, os.WriteFile(tmpFile, []byte("ghp_filetoken\n"), 0600))
+	t.Run("owner token", func(t *testing.T) {
+		t.Setenv("GITHUB_TOKEN", "")
 
-	origTokenFile := tokenFile
-	tokenFile = tmpFile
+		tokenDir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(tokenDir, "default"), []byte("default-token"), 0600))
+		require.NoError(t, os.WriteFile(filepath.Join(tokenDir, "repo_vitalvas"), []byte("owner-token"), 0600))
 
-	t.Cleanup(func() { tokenFile = origTokenFile })
+		client := &Client{TokensDir: tokenDir}
+		assert.Equal(t, "owner-token", client.resolveToken("vitalvas", "other-repo"))
+	})
 
-	token := loadToken()
-	assert.Equal(t, "ghp_filetoken", token)
-}
+	t.Run("default token", func(t *testing.T) {
+		t.Setenv("GITHUB_TOKEN", "")
 
-func TestLoadTokenMissing(t *testing.T) {
-	t.Setenv("GITHUB_TOKEN", "")
+		tokenDir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(tokenDir, "default"), []byte("default-token"), 0600))
 
-	origTokenFile := tokenFile
-	tokenFile = "/nonexistent/path/token"
+		client := &Client{TokensDir: tokenDir}
+		assert.Equal(t, "default-token", client.resolveToken("other-owner", "repo"))
+	})
 
-	t.Cleanup(func() { tokenFile = origTokenFile })
+	t.Run("env var fallback", func(t *testing.T) {
+		t.Setenv("GITHUB_TOKEN", "env-token")
 
-	token := loadToken()
-	assert.Empty(t, token)
+		client := &Client{TokensDir: t.TempDir()}
+		assert.Equal(t, "env-token", client.resolveToken("owner", "repo"))
+	})
+
+	t.Run("no token", func(t *testing.T) {
+		t.Setenv("GITHUB_TOKEN", "")
+
+		client := &Client{TokensDir: t.TempDir()}
+		assert.Empty(t, client.resolveToken("owner", "repo"))
+	})
+
+	t.Run("whitespace trimmed", func(t *testing.T) {
+		t.Setenv("GITHUB_TOKEN", "")
+
+		tokenDir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(tokenDir, "default"), []byte("  my-token\n"), 0600))
+
+		client := &Client{TokensDir: tokenDir}
+		assert.Equal(t, "my-token", client.resolveToken("owner", "repo"))
+	})
 }
 
 func TestVerifyTagSignatureRefNotFound(t *testing.T) {

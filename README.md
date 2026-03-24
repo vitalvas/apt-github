@@ -138,16 +138,30 @@ sudo /usr/lib/apt/methods/github clean
 
 ### Authentication
 
-To avoid GitHub API rate limits (60 requests/hour unauthenticated), provide a Personal Access Token (PAT). The token is read from the following sources in order:
+To avoid GitHub API rate limits (60 requests/hour unauthenticated) or to access private repositories, provide a Personal Access Token (PAT).
 
-1. Environment variable `GITHUB_TOKEN`
-2. File `/etc/apt-transport-github/token`
+Tokens are stored in `/etc/apt-transport-github/tokens/` with one file per scope. The token is resolved in the following order:
 
-To set up a token:
+1. `tokens/repo_<owner>__<repo>` - specific repository
+2. `tokens/repo_<owner>` - all repositories under an owner/organization
+3. `tokens/default` - fallback for all repositories
+4. `GITHUB_TOKEN` environment variable
+
+Each file contains just the raw token. To set up tokens:
 
 ```bash
-echo "ghp_yourtoken" | sudo tee /etc/apt-transport-github/token
-sudo chmod 600 /etc/apt-transport-github/token
+# Default token for all repos
+echo "ghp_defaulttoken" | sudo tee /etc/apt-transport-github/tokens/default
+
+# Token for all repos under an owner/organization
+echo "ghp_ownertoken" | sudo tee /etc/apt-transport-github/tokens/repo_vitalvas
+
+# Token for a specific repo
+echo "ghp_repotoken" | sudo tee /etc/apt-transport-github/tokens/repo_vitalvas__myapp
+
+# Secure the directory
+sudo chmod 700 /etc/apt-transport-github/tokens
+sudo chmod 600 /etc/apt-transport-github/tokens/*
 ```
 
 A classic token with no scopes (public repo access only) is sufficient for public repositories.

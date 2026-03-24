@@ -222,7 +222,7 @@ func (m *Method) loadRepo(parsed *parsedURI, out io.Writer) (*repoState, error) 
 		checksums := make(map[string]string)
 
 		if csAsset := release.FindChecksumsAsset(); csAsset != nil {
-			content, err := m.client.FetchAssetContent(*csAsset)
+			content, err := m.client.FetchAssetContent(parsed.Owner, parsed.Repo, *csAsset)
 			if err != nil {
 				m.logger.Printf("warning: failed to fetch checksums for %s: %s", release.TagName, err)
 			} else {
@@ -300,7 +300,7 @@ func (m *Method) loadControlFields(info github.DebInfo, owner, repo, tag, filena
 		return entry.Fields, entry.SHA256
 	}
 
-	debData, err := m.client.FetchAssetBytes(info.Asset)
+	debData, err := m.client.FetchAssetBytes(owner, repo, info.Asset)
 	if err != nil {
 		m.logger.Printf("warning: failed to fetch package %s/%s %s: %s", owner, repo, filename, err)
 		return nil, ""
@@ -485,7 +485,7 @@ func (m *Method) handlePool(parsed *parsedURI, uri, filename string, out io.Writ
 		}
 	}
 
-	size, err := m.client.DownloadAssetFile(asset, filename)
+	size, err := m.client.DownloadAssetFile(parsed.Owner, parsed.Repo, asset, filename)
 	if err != nil {
 		return sendFailure(out, uri, fmt.Sprintf("download failed: %s", err))
 	}
