@@ -611,6 +611,14 @@ func hashFile(path string) (*fileHashes, error) {
 }
 
 func writeFileAndRespond(out io.Writer, uri, filename string, content []byte) error {
+	start := &Message{Code: 200, Text: "URI Start"}
+	start.Set("URI", uri)
+	start.Set("Size", fmt.Sprintf("%d", len(content)))
+
+	if err := start.Write(out); err != nil {
+		return err
+	}
+
 	if err := os.WriteFile(filename, content, 0644); err != nil {
 		return sendFailure(out, uri, fmt.Sprintf("write failed: %s", err))
 	}

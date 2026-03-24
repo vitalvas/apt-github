@@ -378,6 +378,10 @@ func TestMethodHandleInRelease(t *testing.T) {
 	_, err = ReadMessage(reader)
 	require.NoError(t, err)
 
+	startMsg, err := ReadMessage(reader)
+	require.NoError(t, err)
+	assert.Equal(t, 200, startMsg.Code)
+
 	msg, err := ReadMessage(reader)
 	require.NoError(t, err)
 	assert.Equal(t, 201, msg.Code)
@@ -465,6 +469,10 @@ func TestMethodHandleRelease(t *testing.T) {
 	_, err = ReadMessage(reader)
 	require.NoError(t, err)
 
+	startMsg, err := ReadMessage(reader)
+	require.NoError(t, err)
+	assert.Equal(t, 200, startMsg.Code)
+
 	msg, err := ReadMessage(reader)
 	require.NoError(t, err)
 	assert.Equal(t, 201, msg.Code)
@@ -500,6 +508,10 @@ func TestMethodHandlePackages(t *testing.T) {
 
 	_, err = ReadMessage(reader)
 	require.NoError(t, err)
+
+	startMsg, err := ReadMessage(reader)
+	require.NoError(t, err)
+	assert.Equal(t, 200, startMsg.Code)
 
 	msg, err := ReadMessage(reader)
 	require.NoError(t, err)
@@ -540,6 +552,10 @@ func TestMethodHandlePackagesGz(t *testing.T) {
 	_, err = ReadMessage(reader)
 	require.NoError(t, err)
 
+	startMsg, err := ReadMessage(reader)
+	require.NoError(t, err)
+	assert.Equal(t, 200, startMsg.Code)
+
 	msg, err := ReadMessage(reader)
 	require.NoError(t, err)
 	assert.Equal(t, 201, msg.Code)
@@ -573,8 +589,13 @@ func TestMethodHandlePool(t *testing.T) {
 	_, err = ReadMessage(reader)
 	require.NoError(t, err)
 
-	// Packages done
+	// Packages URI Start
 	msg, err := ReadMessage(reader)
+	require.NoError(t, err)
+	assert.Equal(t, 200, msg.Code)
+
+	// Packages URI Done
+	msg, err = ReadMessage(reader)
 	require.NoError(t, err)
 	assert.Equal(t, 201, msg.Code)
 
