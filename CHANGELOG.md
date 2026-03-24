@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/vitalvas/apt-transport-github/compare/v0.10.0...v0.11.0) (2026-03-24)
+
+
+### Features
+
+* support per-repo and per-owner token resolution ([2ea4776](https://github.com/vitalvas/apt-transport-github/commit/2ea47766a91b2bf037a2fcda00506509e38d3086))
+
 ## [0.10.0](https://github.com/vitalvas/apt-transport-github/compare/v0.9.0...v0.10.0) (2026-03-20)
 
 
