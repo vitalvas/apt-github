@@ -622,6 +622,7 @@ func writeFileAndRespond(out io.Writer, uri, filename string, content []byte) er
 	done.Set("URI", uri)
 	done.Set("Filename", filename)
 	done.Set("Size", fmt.Sprintf("%d", len(content)))
+	done.Set("Last-Modified", time.Now().UTC().Format(time.RFC1123))
 	done.Set("MD5-Hash", fmt.Sprintf("%x", md5Hash))
 	done.Set("SHA256-Hash", fmt.Sprintf("%x", sha256Hash))
 
