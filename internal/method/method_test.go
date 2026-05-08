@@ -337,6 +337,7 @@ func newTestMethod(t *testing.T, server *httptest.Server) *Method {
 	m.client.BaseURL = server.URL
 	m.client.HTTPClient = server.Client()
 	m.arch = "amd64"
+	m.sysArchs = []string{"amd64"}
 
 	return m
 }
@@ -429,6 +430,7 @@ func TestMethodHandleInReleaseNoSigner(t *testing.T) {
 	m.client.BaseURL = server.URL
 	m.client.HTTPClient = server.Client()
 	m.arch = "amd64"
+	m.sysArchs = []string{"amd64"}
 
 	tmpDir := t.TempDir()
 	filename := filepath.Join(tmpDir, "InRelease")
@@ -487,6 +489,45 @@ func TestMethodHandleRelease(t *testing.T) {
 	assert.Contains(t, releaseStr, "amd64")
 	assert.Contains(t, releaseStr, "arm64")
 	assert.Contains(t, releaseStr, "SHA256:")
+}
+
+func TestMethodHandleReleaseWithForeignArch(t *testing.T) {
+	server := newTestServer(t)
+	m := newTestMethod(t, server)
+	m.sysArchs = []string{"amd64", "armhf"}
+
+	tmpDir := t.TempDir()
+	filename := filepath.Join(tmpDir, "Release")
+
+	input := buildAcquireInput("github://owner/testpkg/dists/stable/Release", filename)
+	var out bytes.Buffer
+
+	m.Run(strings.NewReader(input), &out)
+
+	reader := bufio.NewReader(&out)
+
+	_, err := ReadMessage(reader)
+	require.NoError(t, err)
+
+	_, err = ReadMessage(reader)
+	require.NoError(t, err)
+
+	startMsg, err := ReadMessage(reader)
+	require.NoError(t, err)
+	assert.Equal(t, 200, startMsg.Code)
+
+	msg, err := ReadMessage(reader)
+	require.NoError(t, err)
+	assert.Equal(t, 201, msg.Code)
+
+	content, err := os.ReadFile(filename)
+	require.NoError(t, err)
+
+	releaseStr := string(content)
+	assert.Contains(t, releaseStr, "amd64")
+	assert.Contains(t, releaseStr, "arm64")
+	assert.Contains(t, releaseStr, "armhf")
+	assert.Contains(t, releaseStr, "main/binary-armhf/Packages")
 }
 
 func TestMethodHandlePackages(t *testing.T) {

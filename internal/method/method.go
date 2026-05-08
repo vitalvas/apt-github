@@ -12,6 +12,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"os/exec"
 	"runtime"
 	"sort"
 	"strconv"
@@ -29,6 +30,7 @@ type Method struct {
 	signer    signing.Signer
 	diskCache *cache.DiskCache
 	arch      string
+	sysArchs  []string
 	cache     map[string]*repoState
 	logger    *log.Logger
 }
@@ -53,6 +55,7 @@ func NewWithOptions(signer signing.Signer, cacheDir string) *Method {
 		signer:    signer,
 		diskCache: cache.New(cacheDir),
 		arch:      systemArch(),
+		sysArchs:  systemArchitectures(),
 		cache:     make(map[string]*repoState),
 		logger:    log.New(os.Stderr, "apt-transport-github: ", 0),
 	}
@@ -103,6 +106,35 @@ func systemArch() string {
 	}
 
 	return runtime.GOARCH
+}
+
+func systemArchitectures() []string {
+	archs := make(map[string]struct{})
+
+	if out, err := exec.Command("dpkg", "--print-architecture").Output(); err == nil {
+		if arch := strings.TrimSpace(string(out)); arch != "" {
+			archs[arch] = struct{}{}
+		}
+	}
+
+	if out, err := exec.Command("dpkg", "--print-foreign-architectures").Output(); err == nil {
+		for _, arch := range strings.Fields(string(out)) {
+			archs[arch] = struct{}{}
+		}
+	}
+
+	if len(archs) == 0 {
+		return []string{systemArch()}
+	}
+
+	result := make([]string, 0, len(archs))
+	for arch := range archs {
+		result = append(result, arch)
+	}
+
+	sort.Strings(result)
+
+	return result
 }
 
 type parsedURI struct {
@@ -367,8 +399,13 @@ func (m *Method) handleRelease(parsed *parsedURI, uri, filename string, out io.W
 
 func (m *Method) generateReleaseContent(parsed *parsedURI, state *repoState) []byte {
 	archSet := make(map[string]struct{})
+
 	for _, info := range state.debInfos {
 		archSet[info.Arch] = struct{}{}
+	}
+
+	for _, arch := range m.sysArchs {
+		archSet[arch] = struct{}{}
 	}
 
 	archs := make([]string, 0, len(archSet))
