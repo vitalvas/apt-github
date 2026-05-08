@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.3](https://github.com/vitalvas/apt-transport-github/compare/v0.11.2...v0.11.3) (2026-05-08)
+
+
+### Bug Fixes
+
+* include system foreign architectures in Release metadata ([fcea611](https://github.com/vitalvas/apt-transport-github/commit/fcea611382393b5b8afe07d097773534a3d645a3))
+
 ## [0.11.2](https://github.com/vitalvas/apt-transport-github/compare/v0.11.1...v0.11.2) (2026-03-24)
 
 
